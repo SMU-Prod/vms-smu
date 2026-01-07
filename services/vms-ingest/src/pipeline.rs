@@ -1,15 +1,17 @@
-//! Pipeline GStreamer para ingestão de vídeo
+//! Pipeline GStreamer OTIMIZADO - Ultra Baixa Latência + Alta Qualidade
+//! H264 Passthrough - Zero decode/encode
 
 use anyhow::{Context, Result};
 use gstreamer as gst;
 use gstreamer::prelude::*;
+use gstreamer_app as gst_app;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use vms_common::camera::CameraConfig;
 use vms_common::stream::VideoFrame;
 
-/// Pipeline de ingestão de vídeo
+/// Pipeline de ingestão OTIMIZADO
 pub struct IngestPipeline {
     pipeline: gst::Pipeline,
     config: Arc<CameraConfig>,
@@ -17,59 +19,74 @@ pub struct IngestPipeline {
 }
 
 impl IngestPipeline {
-    /// Cria um novo pipeline de ingestão
+    /// Cria pipeline OTIMIZADO para ultra-baixa latência
     pub fn new(config: CameraConfig) -> Result<Self> {
         let pipeline = gst::Pipeline::new();
 
-        // Criar elementos do pipeline
-        // RTSP Source -> RTP Depay -> H264 Parse -> Decode -> Video Convert -> App Sink
+        info!("🚀 Creating OPTIMIZED pipeline for: {}", config.name);
 
+        // RTSP Source com configurações de ZERO LATÊNCIA
         let rtspsrc = gst::ElementFactory::make("rtspsrc")
             .name("source")
             .property("location", &config.url)
-            .property("latency", 0u32)
-            .property("drop-on-latency", true)
+            .property("latency", 0u32)                    // ZERO latency
+            .property("buffer-mode", 0i32)                // Low latency mode
+            .property("drop-on-latency", true)            // Drop frames se necessário
+            .property("do-retransmission", false)         // Sem retransmissão
+            .property("ntp-sync", false)                  // Sem sync NTP
+            .property("ntp-time-source", 3i32)            // Running time
             .build()
             .context("Failed to create rtspsrc")?;
 
-        // Configurar autenticação se necessário
+        // Autenticação
         if let (Some(user), Some(pass)) = (&config.username, &config.password) {
             rtspsrc.set_property("user-id", user);
             rtspsrc.set_property("user-pw", pass);
         }
 
+        // RTP H264 Depayloader - extrai H264 do RTP
         let depay = gst::ElementFactory::make("rtph264depay")
             .name("depay")
             .build()
             .context("Failed to create depay")?;
 
+        // H264 Parser - apenas parse, SEM decode
         let parse = gst::ElementFactory::make("h264parse")
             .name("parse")
+            .property("config-interval", -1i32)           // Enviar SPS/PPS sempre
             .build()
             .context("Failed to create h264parse")?;
 
-        let decode = gst::ElementFactory::make("avdec_h264")
-            .name("decode")
+        // Queue com buffer MÍNIMO para baixa latência
+        let queue = gst::ElementFactory::make("queue")
+            .name("queue")
+            .property("max-size-buffers", 1u32)           // Apenas 1 frame no buffer
+            .property("max-size-bytes", 0u32)             // Sem limite de bytes
+            .property("max-size-time", 0u64)              // Sem limite de tempo
+            .property("leaky", 2i32)                      // Downstream leaky - drop old frames
             .build()
-            .context("Failed to create decoder")?;
+            .context("Failed to create queue")?;
 
-        let convert = gst::ElementFactory::make("videoconvert")
-            .name("convert")
-            .build()
-            .context("Failed to create videoconvert")?;
-
-        let sink = gst::ElementFactory::make("appsink")
+        // AppSink - recebe H264 RAW (sem decode!)
+        let sink = gst_app::AppSink::builder()
             .name("sink")
-            .property("emit-signals", true)
-            .property("sync", false)
-            .build()
-            .context("Failed to create appsink")?;
+            .sync(false)                                  // Sem sync - máxima velocidade
+            .max_buffers(1)                               // Buffer mínimo
+            .drop(true)                                   // Drop frames antigos
+            .build();
 
-        // Adicionar elementos ao pipeline
-        pipeline.add_many(&[&depay, &parse, &decode, &convert, &sink])?;
+        // Configurar caps para H264
+        let caps = gst::Caps::builder("video/x-h264")
+            .field("stream-format", "byte-stream")
+            .field("alignment", "au")
+            .build();
+        sink.set_caps(Some(&caps));
 
-        // Link elementos estáticos (rtspsrc precisa de pad-added callback)
-        gst::Element::link_many(&[&depay, &parse, &decode, &convert, &sink])?;
+        // Adicionar elementos
+        pipeline.add_many(&[&depay, &parse, &queue, sink.upcast_ref()])?;
+
+        // Link pipeline: depay -> parse -> queue -> sink
+        gst::Element::link_many(&[&depay, &parse, &queue, sink.upcast_ref()])?;
 
         // Conectar pads dinâmicos do rtspsrc
         let depay_clone = depay.clone();
@@ -87,11 +104,16 @@ impl IngestPipeline {
                 let structure = caps.structure(0).expect("Failed to get caps structure");
                 let media_type = structure.name();
 
+                // Conectar apenas video RTP
                 if media_type.starts_with("application/x-rtp") {
-                    if let Err(e) = src_pad.link(&sink_pad) {
-                        error!("Failed to link pads: {}", e);
-                    } else {
-                        info!("Successfully linked RTSP source");
+                    if let Some(media) = structure.get::<String>("media").ok() {
+                        if media == "video" {
+                            if let Err(e) = src_pad.link(&sink_pad) {
+                                error!("❌ Failed to link pads: {}", e);
+                            } else {
+                                info!("✅ Linked RTSP video source (H264 passthrough)");
+                            }
+                        }
                     }
                 }
             }
@@ -106,14 +128,16 @@ impl IngestPipeline {
         })
     }
 
-    /// Define o canal para enviar frames processados
+    /// Define o canal para enviar frames H264 RAW
     pub fn set_frame_sender(&mut self, tx: mpsc::Sender<VideoFrame>) {
         self.frame_tx = Some(tx);
     }
 
     /// Inicia o pipeline
     pub fn start(&self) -> Result<()> {
-        info!("Starting pipeline for camera: {}", self.config.name);
+        info!("▶️  Starting OPTIMIZED pipeline: {}", self.config.name);
+        info!("📊 Mode: H264 Passthrough (Zero decode/encode)");
+        info!("⚡ Target latency: < 50ms");
 
         self.pipeline
             .set_state(gst::State::Playing)
@@ -124,7 +148,7 @@ impl IngestPipeline {
 
     /// Para o pipeline
     pub fn stop(&self) -> Result<()> {
-        info!("Stopping pipeline for camera: {}", self.config.name);
+        info!("⏹️  Stopping pipeline: {}", self.config.name);
 
         self.pipeline
             .set_state(gst::State::Null)
@@ -133,7 +157,7 @@ impl IngestPipeline {
         Ok(())
     }
 
-    /// Verifica se o pipeline está rodando
+    /// Verifica se está rodando
     pub fn is_running(&self) -> bool {
         matches!(
             self.pipeline.current_state(),
@@ -141,9 +165,16 @@ impl IngestPipeline {
         )
     }
 
-    /// Retorna o bus para mensagens do pipeline
+    /// Retorna o bus
     pub fn bus(&self) -> Option<gst::Bus> {
         self.pipeline.bus()
+    }
+
+    /// Obtém o appsink para processar frames
+    pub fn get_appsink(&self) -> Option<gst_app::AppSink> {
+        self.pipeline
+            .by_name("sink")
+            .and_then(|e| e.downcast::<gst_app::AppSink>().ok())
     }
 }
 
@@ -153,45 +184,53 @@ impl Drop for IngestPipeline {
     }
 }
 
-/// Handler para processar frames do appsink
+/// Handler para processar frames H264 RAW
 pub struct FrameHandler {
     tx: mpsc::Sender<VideoFrame>,
+    camera_id: String,
 }
 
 impl FrameHandler {
-    pub fn new(tx: mpsc::Sender<VideoFrame>) -> Self {
-        Self { tx }
+    pub fn new(tx: mpsc::Sender<VideoFrame>, camera_id: String) -> Self {
+        Self { tx, camera_id }
     }
 
-    /// Processa um sample do appsink
+    /// Processa sample H264 RAW do appsink
     pub async fn handle_sample(&self, sample: gst::Sample) -> Result<()> {
         let buffer = sample.buffer().context("Failed to get buffer")?;
         let caps = sample.caps().context("Failed to get caps")?;
 
-        // Extrair informações do vídeo
+        // Extrair info
         let structure = caps.structure(0).context("Failed to get structure")?;
-        let width = structure.get::<i32>("width")?;
-        let height = structure.get::<i32>("height")?;
+        
+        // H264 não tem width/height no caps, usar valores da câmera
+        let width = 1920u32;  // TODO: pegar do config
+        let height = 1080u32;
 
-        // Mapear buffer para leitura
+        // Mapear buffer H264 RAW
         let map = buffer.map_readable().context("Failed to map buffer")?;
         let data = map.as_slice().to_vec();
 
-        // Criar VideoFrame
+        debug!(
+            "📦 H264 frame: {} bytes ({}x{}) - camera: {}",
+            data.len(),
+            width,
+            height,
+            self.camera_id
+        );
+
+        // Criar VideoFrame com H264 RAW
         let frame = VideoFrame::new(
             vms_common::types::StreamId::new(),
             data,
-            width as u32,
-            height as u32,
+            width,
+            height,
         );
 
         // Enviar frame
-        self.tx
-            .send(frame)
-            .await
-            .context("Failed to send frame")?;
-
-        debug!("Processed frame: {}x{} ({} bytes)", width, height, map.len());
+        if let Err(e) = self.tx.try_send(frame) {
+            warn!("⚠️  Failed to send frame (buffer full?): {}", e);
+        }
 
         Ok(())
     }
@@ -202,12 +241,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_pipeline_creation() {
+    fn test_optimized_pipeline_creation() {
         gst::init().unwrap();
 
         let config = CameraConfig::new(
-            "Test".to_string(),
-            "rtsp://test".to_string(),
+            "Test Camera".to_string(),
+            "rtsp://test:554/stream1".to_string(),
         );
 
         let pipeline = IngestPipeline::new(config);

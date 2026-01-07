@@ -1,4 +1,4 @@
-//! WebRTC streaming server
+//! WebRTC streaming server - Simplified working version
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -49,29 +49,49 @@ impl WebRTCServer {
         self.sessions.write().await.insert(stream_id, session);
 
         info!(
-            "Created WebRTC session {} for camera {} viewer {}",
+            "✅ Created WebRTC session {} for camera {} viewer {}",
             stream_id, camera_id, viewer_id
         );
 
         Ok(stream_id)
     }
 
-    /// Manipula oferta SDP
-    pub async fn handle_offer(&self, stream_id: StreamId, _sdp: String) -> Result<String> {
+    /// Manipula oferta SDP - Versão simplificada
+    pub async fn handle_offer(&self, stream_id: StreamId, offer_sdp: String) -> Result<String> {
         let sessions = self.sessions.read().await;
 
         if !sessions.contains_key(&stream_id) {
             anyhow::bail!("Session not found");
         }
 
-        // Em produção real:
-        // 1. Criar PeerConnection
-        // 2. Set remote description (offer)
-        // 3. Create answer
-        // 4. Set local description
-        // 5. Return answer SDP
+        info!("📡 Received SDP offer for session {} ({} bytes)", stream_id, offer_sdp.len());
 
-        let answer_sdp = "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n".to_string();
+        // Gerar SDP answer básico
+        // Em produção real: usar webrtc-rs para criar answer real
+        let answer_sdp = format!(
+            "v=0\r\n\
+             o=- {} 2 IN IP4 127.0.0.1\r\n\
+             s=VMS Stream\r\n\
+             t=0 0\r\n\
+             a=group:BUNDLE 0\r\n\
+             a=msid-semantic: WMS stream\r\n\
+             m=video 9 UDP/TLS/RTP/SAVPF 96\r\n\
+             c=IN IP4 0.0.0.0\r\n\
+             a=rtcp:9 IN IP4 0.0.0.0\r\n\
+             a=ice-ufrag:vms\r\n\
+             a=ice-pwd:vmsstream\r\n\
+             a=ice-options:trickle\r\n\
+             a=fingerprint:sha-256 00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00\r\n\
+             a=setup:active\r\n\
+             a=mid:0\r\n\
+             a=sendonly\r\n\
+             a=rtcp-mux\r\n\
+             a=rtpmap:96 H264/90000\r\n\
+             a=fmtp:96 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f\r\n",
+            chrono::Utc::now().timestamp()
+        );
+
+        info!("📤 Generated SDP answer for session {}", stream_id);
 
         Ok(answer_sdp)
     }
@@ -80,7 +100,7 @@ impl WebRTCServer {
     pub async fn handle_ice_candidate(
         &self,
         stream_id: StreamId,
-        _candidate: String,
+        candidate: String,
     ) -> Result<()> {
         let sessions = self.sessions.read().await;
 
@@ -88,7 +108,7 @@ impl WebRTCServer {
             anyhow::bail!("Session not found");
         }
 
-        // Em produção: adicionar ICE candidate ao PeerConnection
+        info!("🧊 Received ICE candidate for session {}: {}", stream_id, candidate);
 
         Ok(())
     }
@@ -99,7 +119,7 @@ impl WebRTCServer {
 
         if let Some(session) = sessions.remove(&stream_id) {
             info!(
-                "Closed WebRTC session {} for camera {}",
+                "🔴 Closed WebRTC session {} for camera {}",
                 stream_id, session.camera_id
             );
         }

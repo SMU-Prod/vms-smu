@@ -13,10 +13,12 @@ mod metrics;
 mod nats_publisher;
 mod onvif;
 mod pipeline;
+mod api_client;
 
 use camera_manager::CameraManager;
 use metrics::IngestMetrics;
 use nats_publisher::NatsPublisher;
+use api_client::ApiClient;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -47,22 +49,33 @@ async fn main() -> Result<()> {
     let manager = Arc::new(CameraManager::new(100));
     let metrics = Arc::new(IngestMetrics::new());
 
-    // Adicionar câmeras de exemplo
-    let cameras = vec![
-        CameraConfig::new(
-            "Camera 1".to_string(),
-            "rtsp://192.168.1.100:554/stream1".to_string(),
-        )
-        .with_credentials("admin".to_string(), "password".to_string()),
-        CameraConfig::new(
-            "Camera 2".to_string(),
-            "rtsp://192.168.1.101:554/stream1".to_string(),
-        ),
-    ];
-
-    for camera in cameras {
-        info!("📹 Adding camera: {}", camera.name);
-        manager.add_camera(camera).await?;
+    // Buscar câmeras da API
+    let api_url = std::env::var("VMS_API_URL").unwrap_or_else(|_| "http://localhost:9095".to_string());
+    let api_client = ApiClient::new(api_url);
+    
+    info!("📡 Fetching cameras from vms-api...");
+    match api_client.get_enabled_cameras().await {
+        Ok(api_cameras) => {
+            info!("✅ Found {} enabled cameras", api_cameras.len());
+            
+            for api_camera in api_cameras {
+                info!("📹 Adding camera: {}", api_camera.name);
+                
+                // Converter ApiCamera para CameraConfig
+                let camera_config = CameraConfig::new(
+                    api_camera.name.clone(),
+                    api_camera.rtsp_url.clone(),
+                );
+                
+                if let Err(e) = manager.add_camera(camera_config).await {
+                    info!("⚠️  Failed to add camera {}: {}", api_camera.name, e);
+                }
+            }
+        }
+        Err(e) => {
+            info!("⚠️  Could not fetch cameras from API: {}", e);
+            info!("⚠️  Service will start without cameras. Add cameras via vms-api.");
+        }
     }
 
     // Iniciar todas as câmeras
