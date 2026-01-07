@@ -1,0 +1,49 @@
+[package]
+name = "vms-evidence"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "vms-evidence"
+path = "src/main.rs"
+
+[dependencies]
+vms-common = { path = "../../libs/vms-common" }
+
+# Async
+tokio = { workspace = true }
+futures = "0.3"
+
+# Web
+axum = { workspace = true }
+tower = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Database
+sqlx = { workspace = true }
+redis = { workspace = true }
+
+# Messaging
+async-nats = { workspace = true }
+
+# Utilities
+uuid = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+rand = "0.8"
+
+# File handling
+sha2 = { workspace = true }
+zip = "0.6"
+base64 = "0.21"
+
+# Observability
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

@@ -1,0 +1,20 @@
+FROM rust:1.75 as builder
+
+WORKDIR /build
+
+COPY Cargo.toml rust-toolchain.toml ./
+COPY libs ./libs
+COPY services/vms-api ./services/vms-api
+
+RUN cargo build --release -p vms-api
+
+# Runtime
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/target/release/vms-api /usr/local/bin/
+
+EXPOSE 9095
+
+CMD ["vms-api"]

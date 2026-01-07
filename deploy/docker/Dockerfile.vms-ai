@@ -1,0 +1,21 @@
+FROM rust:1.75 as builder
+
+WORKDIR /build
+
+COPY Cargo.toml rust-toolchain.toml ./
+COPY libs ./libs
+COPY services/vms-ai ./services/vms-ai
+
+RUN cargo build --release -p vms-ai
+
+# Runtime
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/target/release/vms-ai /usr/local/bin/
+
+EXPOSE 9093
+VOLUME ["/models"]
+
+CMD ["vms-ai"]

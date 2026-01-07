@@ -1,0 +1,18 @@
+[package]
+name = "vms-gateway"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "vms-gateway"
+path = "src/main.rs"
+
+[dependencies]
+vms-common = { path = "../../libs/vms-common" }
+tokio = { workspace = true }
+serde = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }

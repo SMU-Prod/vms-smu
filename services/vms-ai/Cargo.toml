@@ -1,0 +1,30 @@
+[package]
+name = "vms-ai"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "vms-ai"
+path = "src/main.rs"
+
+[dependencies]
+vms-common = { path = "../../libs/vms-common" }
+
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tract-onnx = { workspace = true }
+ndarray = "0.15"
+image = "0.24"
+axum = { workspace = true }
+async-nats = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }

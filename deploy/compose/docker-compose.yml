@@ -1,0 +1,189 @@
+version: '3.8'
+
+services:
+  # VMS Services
+  vms-ingest:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.vms-ingest
+    container_name: vms-ingest
+    environment:
+      - RUST_LOG=info
+      - MAX_CAMERAS=100
+    ports:
+      - "9091:9091"  # Metrics
+    networks:
+      - vms-network
+    restart: unless-stopped
+    depends_on:
+      - nats
+      - prometheus
+
+  vms-storage:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.vms-storage
+    container_name: vms-storage
+    environment:
+      - RUST_LOG=info
+      - STORAGE_PATH=/storage
+    volumes:
+      - storage-data:/storage
+    ports:
+      - "9092:9092"  # HTTP API + Metrics
+    networks:
+      - vms-network
+    restart: unless-stopped
+
+  vms-ai:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.vms-ai
+    container_name: vms-ai
+    environment:
+      - RUST_LOG=info
+      - AI_MODEL_PATH=/models/rtdetr.onnx
+    volumes:
+      - ai-models:/models
+    ports:
+      - "9093:9093"  # HTTP + Metrics
+    networks:
+      - vms-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]  # Opcional: para NVIDIA GPU
+
+  vms-stream:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.vms-stream
+    container_name: vms-stream
+    environment:
+      - RUST_LOG=info
+    ports:
+      - "8443:8443"  # WebRTC
+      - "9000:9000"  # SRT
+      - "9094:9094"  # Metrics
+    networks:
+      - vms-network
+    restart: unless-stopped
+
+  vms-api:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.vms-api
+    container_name: vms-api
+    environment:
+      - RUST_LOG=info
+    ports:
+      - "9095:9095"  # HTTP API
+    networks:
+      - vms-network
+    restart: unless-stopped
+    depends_on:
+      - vms-ingest
+      - vms-storage
+      - vms-ai
+      - vms-stream
+
+  # Messaging
+  nats:
+    image: nats:2.10-alpine
+    container_name: vms-nats
+    command: ["-js", "-m", "8222"]
+    ports:
+      - "4222:4222"  # Client
+      - "8222:8222"  # Monitoring
+    networks:
+      - vms-network
+    restart: unless-stopped
+
+  # Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: vms-postgres
+    environment:
+      - POSTGRES_USER=vms
+      - POSTGRES_PASSWORD=vms_password
+      - POSTGRES_DB=vms
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - vms-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: vms-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - vms-network
+    restart: unless-stopped
+
+  # Observability Stack (from monitoring compose)
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: vms-prometheus
+    volumes:
+      - ../../monitoring/prometheus:/etc/prometheus
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=30d'
+    ports:
+      - "9090:9090"
+    networks:
+      - vms-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: vms-grafana
+    volumes:
+      - ../../monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - grafana-data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3000:3000"
+    networks:
+      - vms-network
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: vms-loki
+    volumes:
+      - ../../monitoring/loki:/etc/loki
+      - loki-data:/loki
+    command: -config.file=/etc/loki/loki.yml
+    ports:
+      - "3100:3100"
+    networks:
+      - vms-network
+    restart: unless-stopped
+
+volumes:
+  storage-data:
+  ai-models:
+  postgres-data:
+  redis-data:
+  prometheus-data:
+  grafana-data:
+  loki-data:
+
+networks:
+  vms-network:
+    driver: bridge

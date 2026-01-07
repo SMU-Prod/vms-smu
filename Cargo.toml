@@ -1,0 +1,109 @@
+[workspace]
+resolver = "2"
+members = [
+    "services/vms-ingest",
+    "services/vms-storage",
+    "services/vms-ai",
+    "services/vms-stream",
+    "services/vms-api",
+    "services/vms-gateway",
+    "services/vms-replicator",
+    "services/vms-events",
+    "services/vms-auth",
+    "services/vms-evidence",
+    "services/vms-analytics",
+    "services/vms-lpr",
+    "services/vms-face",
+    "services/vms-onvif",
+    "libs/vms-common",
+    "libs/vms-proto",
+    "libs/vms-format",
+    "libs/vms-telemetry",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+authors = ["VMS Enterprise Team"]
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+# Runtime e Async
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+
+# Media Pipeline
+gstreamer = "0.22"
+gstreamer-app = "0.22"
+gstreamer-video = "0.22"
+
+# Networking
+tonic = "0.11"           # gRPC
+prost = "0.12"           # Protocol Buffers
+axum = "0.7"             # HTTP framework
+tower = "0.4"            # Middleware
+hyper = "1.0"            # HTTP
+quinn = "0.10"           # QUIC/HTTP3
+
+# Streaming
+webrtc = "0.9"
+# srt-rs = "0.3"         # Note: srt-rs may need specific setup
+
+# Messaging
+async-nats = "0.33"
+
+# Database
+sqlx = { version = "0.7", features = ["postgres", "runtime-tokio"] }
+redis = "0.24"
+rocksdb = "0.21"
+
+# AI/ML
+tract-onnx = "0.21"      # ONNX CPU inference
+ort = "2.0"              # ONNX Runtime (GPU)
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+parquet = "51"           # Eventos analytics
+
+# Observability
+opentelemetry = "0.21"
+opentelemetry-otlp = "0.14"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+tracing-opentelemetry = "0.22"
+metrics = "0.21"
+metrics-exporter-prometheus = "0.12"
+
+# Utilities
+uuid = { version = "1", features = ["v4", "v7", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1"
+anyhow = "1"
+config = "0.14"          # Configuration management
+futures = "0.3"          # Async streams
+bytes = "1"              # Byte buffers
+
+# Security
+jsonwebtoken = "9"
+argon2 = "0.5"           # Password hashing
+sha2 = "0.10"            # Checksums
+
+# Testing
+proptest = "1"
+testcontainers = "0.15"
+criterion = "0.5"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+[profile.bench]
+inherits = "release"

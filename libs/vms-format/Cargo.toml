@@ -1,0 +1,13 @@
+[package]
+name = "vms-format"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+vms-common = { path = "../vms-common" }
+serde = { workspace = true }
+parquet = { workspace = true }
+anyhow = { workspace = true }

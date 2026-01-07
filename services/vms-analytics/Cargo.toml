@@ -1,0 +1,39 @@
+[package]
+name = "vms-analytics"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "vms-analytics"
+path = "src/main.rs"
+
+[dependencies]
+vms-common = { path = "../../libs/vms-common" }
+
+# Async
+tokio = { workspace = true }
+futures = "0.3"
+
+# Web
+axum = { workspace = true }
+tower = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Messaging
+async-nats = { workspace = true }
+
+# Utilities
+uuid = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Observability
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

@@ -1,0 +1,135 @@
+groups:
+  - name: vms_camera_alerts
+    interval: 30s
+    rules:
+      - alert: CameraOffline
+        expr: vms_camera_status == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: camera
+        annotations:
+          summary: "Camera {{ $labels.camera_id }} is offline"
+          description: "Camera {{ $labels.camera_name }} has been offline for more than 1 minute"
+
+      - alert: CameraLowFPS
+        expr: vms_camera_fps < 20
+        for: 2m
+        labels:
+          severity: warning
+          component: camera
+        annotations:
+          summary: "Camera {{ $labels.camera_id }} has low FPS"
+          description: "Camera {{ $labels.camera_name }} FPS is {{ $value }}, below threshold of 20"
+
+  - name: vms_latency_alerts
+    interval: 30s
+    rules:
+      - alert: HighE2ELatency
+        expr: vms_e2e_latency_ms > 500
+        for: 1m
+        labels:
+          severity: warning
+          component: streaming
+        annotations:
+          summary: "High end-to-end latency detected"
+          description: "E2E latency is {{ $value }}ms, above 500ms threshold for 1 minute"
+
+      - alert: HighWebRTCRTT
+        expr: vms_webrtc_rtt_ms > 200
+        for: 1m
+        labels:
+          severity: warning
+          component: streaming
+        annotations:
+          summary: "High WebRTC RTT detected"
+          description: "WebRTC RTT is {{ $value }}ms, above 200ms threshold"
+
+  - name: vms_storage_alerts
+    interval: 60s
+    rules:
+      - alert: DiskSpaceWarning
+        expr: (vms_disk_usage_bytes / vms_disk_total_bytes) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "Disk space usage above 85%"
+          description: "Disk usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+
+      - alert: DiskSpaceCritical
+        expr: (vms_disk_usage_bytes / vms_disk_total_bytes) * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+          component: storage
+        annotations:
+          summary: "Disk space usage above 95%"
+          description: "Disk usage is {{ $value | humanizePercentage }} on {{ $labels.instance }} - immediate action required"
+
+      - alert: LowWriteThroughput
+        expr: rate(vms_write_bytes_total[5m]) < 50000000
+        for: 5m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "Low write throughput detected"
+          description: "Write throughput is {{ $value | humanize }}B/s, below 50MB/s"
+
+  - name: vms_ai_alerts
+    interval: 30s
+    rules:
+      - alert: HighAIInferenceTime
+        expr: vms_ai_inference_ms > 100
+        for: 2m
+        labels:
+          severity: warning
+          component: ai
+        annotations:
+          summary: "High AI inference time"
+          description: "AI inference time is {{ $value }}ms, above 100ms threshold"
+
+      - alert: HighAIQueueDepth
+        expr: vms_ai_queue_depth > 100
+        for: 1m
+        labels:
+          severity: warning
+          component: ai
+        annotations:
+          summary: "High AI processing queue depth"
+          description: "AI queue depth is {{ $value }}, above 100 threshold - backlog building up"
+
+  - name: vms_system_alerts
+    interval: 30s
+    rules:
+      - alert: HighCPUUsage
+        expr: (100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)) > 90
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+
+      - alert: HighGPUUtilization
+        expr: vms_gpu_utilization > 95
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High GPU utilization"
+          description: "GPU {{ $labels.gpu_id }} utilization is {{ $value }}% for 5 minutes"

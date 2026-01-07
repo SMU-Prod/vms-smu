@@ -1,0 +1,98 @@
+# VMS Enterprise - Configuração de Exemplo
+# Copie este arquivo para config.toml e ajuste conforme necessário
+
+[ingest]
+# Número máximo de câmeras por instância
+max_cameras = 100
+
+# Timeout de conexão em segundos
+connection_timeout_secs = 30
+
+# Intervalo de reconexão em segundos
+reconnect_interval_secs = 5
+
+# Buffer size para frames
+frame_buffer_size = 100
+
+[storage]
+# Diretório base para armazenamento
+base_path = "/storage/vms"
+
+# Retenção em dias
+retention_days = 30
+
+# Habilitar compressão
+enable_compression = true
+
+# Habilitar criptografia
+enable_encryption = false
+
+[streaming]
+# Porta WebRTC
+webrtc_port = 8443
+
+# Porta SRT
+srt_port = 9000
+
+# Número máximo de viewers simultâneos
+max_viewers = 1000
+
+# Latência alvo em ms
+target_latency_ms = 100
+
+[ai]
+# Habilitar pipeline de IA
+enabled = false
+
+# Device para inferência
+# Opções: "cuda", "cpu", "rocm", "openvino", "coreml"
+device = "cpu"
+
+# Número de workers
+num_workers = 4
+
+# Tamanho do batch
+batch_size = 8
+
+# Threshold de confiança (0.0 - 1.0)
+confidence_threshold = 0.5
+
+[observability]
+# Endpoint do OpenTelemetry Collector
+otlp_endpoint = "http://localhost:4317"
+
+# Habilitar métricas
+enable_metrics = true
+
+# Habilitar traces
+enable_traces = true
+
+# Habilitar logs estruturados
+enable_structured_logs = true
+
+# Nível de log
+# Opções: "trace", "debug", "info", "warn", "error"
+log_level = "info"
+
+# Exemplo de configuração de câmera
+[[cameras]]
+id = "550e8400-e29b-41d4-a716-446655440000"
+name = "Camera Entrada Principal"
+url = "rtsp://192.168.1.100:554/stream1"
+protocol = "RTSP"
+username = "admin"
+password = "password123"
+resolution = { width = 1920, height = 1080 }
+fps = 25.0
+recording_enabled = true
+ai_enabled = true
+
+[[cameras]]
+id = "550e8400-e29b-41d4-a716-446655440001"
+name = "Camera Estacionamento"
+url = "rtsp://192.168.1.101:554/stream1"
+protocol = "RTSP"
+resolution = { width = 1920, height = 1080 }
+fps = 15.0
+recording_enabled = true
+ai_enabled = false

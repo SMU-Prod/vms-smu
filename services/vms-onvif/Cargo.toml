@@ -1,0 +1,53 @@
+[package]
+name = "vms-onvif"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+name = "vms_onvif"
+path = "src/lib.rs"
+
+[[bin]]
+name = "vms-onvif"
+path = "src/main.rs"
+
+[[example]]
+name = "test_camera"
+path = "examples/test_camera.rs"
+
+[[example]]
+name = "test_tapo_c100"
+path = "examples/test_tapo_c100.rs"
+
+[dependencies]
+vms-common = { path = "../../libs/vms-common" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+# HTTP client - versão compatível sem features pesadas
+reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"] }
+
+# Digest authentication
+md5 = "0.7"
+base64 = "0.21"
+
+# Async
+futures = "0.3"
+async-trait = "0.1"
+
+# Random para cnonce
+rand = "0.8"
+
+# URL parsing
+url = "2.4"
+
+# Error handling
+thiserror = "1"

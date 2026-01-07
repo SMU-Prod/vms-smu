@@ -1,0 +1,21 @@
+FROM rust:1.75 as builder
+
+WORKDIR /build
+
+COPY Cargo.toml rust-toolchain.toml ./
+COPY libs ./libs
+COPY services/vms-storage ./services/vms-storage
+
+RUN cargo build --release -p vms-storage
+
+# Runtime
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/target/release/vms-storage /usr/local/bin/
+
+EXPOSE 9092
+VOLUME ["/storage"]
+
+CMD ["vms-storage"]
