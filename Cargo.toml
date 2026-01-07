@@ -1,5 +1,6 @@
 [workspace]
 resolver = "2"
+exclude = ["apps/vms-admin/src-tauri", "apps/vms-viewer/src-tauri"]
 members = [
     "services/vms-ingest",
     "services/vms-storage",

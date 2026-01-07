@@ -61,10 +61,13 @@ async fn main() -> Result<()> {
             for api_camera in api_cameras {
                 info!("📹 Adding camera: {}", api_camera.name);
                 
-                // Converter ApiCamera para CameraConfig
+                // Converter ApiCamera para CameraConfig with credentials
                 let camera_config = CameraConfig::new(
                     api_camera.name.clone(),
                     api_camera.rtsp_url.clone(),
+                ).with_credentials(
+                    api_camera.username.clone(),
+                    api_camera.password.clone(),
                 );
                 
                 if let Err(e) = manager.add_camera(camera_config).await {

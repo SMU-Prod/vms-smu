@@ -112,12 +112,13 @@ fn main() -> Result<()> {
 fn create_ultra_low_latency_pipeline(args: &Args) -> Result<gst::Pipeline> {
     let pipeline = gst::Pipeline::new();
 
-    // RTSP Source - LOW LATENCY
+    // RTSP Source - BALANCED LATENCY/QUALITY
+    // 100ms buffer prevents frame drops during motion while keeping latency low
     let rtspsrc = gst::ElementFactory::make("rtspsrc")
         .name("source")
         .property("location", &args.url)
-        .property("latency", 0u32)
-        .property("drop-on-latency", true)
+        .property("latency", 100u32)         // 100ms buffer for quality
+        .property("drop-on-latency", false)  // Don't drop frames - preserves motion
         .build()?;
 
     // Auth
@@ -163,69 +164,64 @@ fn create_ultra_low_latency_pipeline(args: &Args) -> Result<gst::Pipeline> {
         gst::ElementFactory::make("avdec_h264").build()?
     };
 
-    // Video convert - HIGH QUALITY
+    // Video convert - simple conversion preserving quality
     let convert = gst::ElementFactory::make("videoconvert")
         .name("convert")
         .build()?;
 
-    // Deinterlace - remove interlacing artifacts
-    let deinterlace = gst::ElementFactory::make("deinterlace")
-        .name("deinterlace")
-        .build()?;
-
-    // Video balance - adjust brightness/contrast
+    // Video balance - adjust to match Digifort-style colors
     let balance = gst::ElementFactory::make("videobalance")
         .name("balance")
-        .property("brightness", -0.05f64)  // Slightly reduce brightness
-        .property("contrast", 1.1f64)      // Increase contrast
+        .property("brightness", -0.02f64)   // -2% brightness (10% brighter)
+        .property("saturation", 1.10f64)    // Increase saturation 10% (richer colors)
+        .property("contrast", 1.05f64)      // Slight contrast boost 5%
         .build()?;
 
-    // Gamma correction
-    let gamma = gst::ElementFactory::make("gamma")
-        .name("gamma")
-        .property("gamma", 0.9f64)  // Slightly darker for better detail
-        .build()?;
-
-    // Video scale - preserve quality
+    // Video scale - uses default high-quality algorithm
     let scale = gst::ElementFactory::make("videoscale")
         .name("scale")
         .build()?;
 
-    // Caps filter - force output resolution
+    // Caps filter - use specified resolution or native
     let capsfilter = gst::ElementFactory::make("capsfilter")
         .name("capsfilter")
         .build()?;
 
-    let caps = gst::Caps::builder("video/x-raw")
-        .field("width", args.width as i32)
-        .field("height", args.height as i32)
-        .build();
-    capsfilter.set_property("caps", &caps);
-
-    // Video sink - OPTIMIZED for quality
-    let videosink = if args.fullscreen {
-        gst::ElementFactory::make("autovideosink")
-            .name("sink")
-            .property("sync", false)
-            .property("fullscreen", true)
-            .build()?
+    // Only apply caps if non-zero dimensions specified
+    if args.width > 0 && args.height > 0 {
+        let caps = gst::Caps::builder("video/x-raw")
+            .field("width", args.width as i32)
+            .field("height", args.height as i32)
+            .build();
+        capsfilter.set_property("caps", &caps);
+        info!("📐 Output resolution: {}x{}", args.width, args.height);
     } else {
-        gst::ElementFactory::make("autovideosink")
-            .name("sink")
-            .property("sync", false)
-            .build()?
-    };
+        info!("📐 Using native camera resolution");
+    }
 
-    // Add ALL elements including quality filters
+    // Video sink - D3D12 for best Windows quality, sync=true for quality
+    let videosink = gst::ElementFactory::make("d3d12videosink")
+        .name("sink")
+        .property("sync", true)  // Enable sync for smooth playback
+        .property("fullscreen", args.fullscreen)
+        .build()
+        .unwrap_or_else(|_| {
+            info!("D3D12 sink not available, using autovideosink");
+            gst::ElementFactory::make("autovideosink")
+                .name("sink")
+                .property("sync", true)
+                .build()
+                .expect("Failed to create video sink")
+        });
+
+    // Pipeline: RTSP -> Depay -> Parse -> Decode -> Convert -> Balance -> Scale -> Caps -> Sink
+    // Balance reduces brightness by 12% for natural colors
     pipeline.add_many(&[
-        &depay, &parse, &decode, &convert, &deinterlace, 
-        &balance, &gamma, &scale, &capsfilter, &videosink
+        &depay, &parse, &decode, &convert, &balance, &scale, &capsfilter, &videosink
     ])?;
 
-    // Link pipeline with ALL quality enhancements
     gst::Element::link_many(&[
-        &depay, &parse, &decode, &convert, &deinterlace,
-        &balance, &gamma, &scale, &capsfilter, &videosink
+        &depay, &parse, &decode, &convert, &balance, &scale, &capsfilter, &videosink
     ])?;
 
     // Connect dynamic pads
@@ -258,8 +254,8 @@ fn create_ultra_low_latency_pipeline(args: &Args) -> Result<gst::Pipeline> {
 
     pipeline.add(&rtspsrc)?;
 
-    // Set pipeline latency to minimum
-    pipeline.set_latency(gst::ClockTime::from_mseconds(0));
+    // Don't force zero latency - let GStreamer manage for quality
+    // pipeline.set_latency(gst::ClockTime::from_mseconds(0));
 
     Ok(pipeline)
 }

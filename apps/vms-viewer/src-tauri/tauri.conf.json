@@ -1,0 +1,49 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "SMU VMS Viewer",
+  "version": "1.0.0",
+  "identifier": "com.smu.vms.viewer",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1421",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "SMU VMS Viewer",
+        "width": 1920,
+        "height": 1080,
+        "center": true,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "minWidth": 1280,
+        "minHeight": 720
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "msi",
+      "nsis"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "publisher": "SMU Prod",
+    "copyright": "© 2026 SMU Prod. All rights reserved.",
+    "category": "Video",
+    "shortDescription": "SMU VMS Viewer Client",
+    "longDescription": "Enterprise Video Management System - Viewer Client for live camera monitoring with PTZ control, recording, and multi-camera grid view."
+  }
+}

@@ -11,15 +11,26 @@ pub struct ApiCamera {
     pub id: String,
     pub name: String,
     pub rtsp_url: String,
+    #[serde(default)]
     pub onvif_url: Option<String>,
+    #[serde(default)]
     pub username: String,
-    #[serde(skip_serializing)]
+    #[serde(default)]
     pub password: String,
+    #[serde(default)]
     pub resolution_width: u32,
+    #[serde(default)]
     pub resolution_height: u32,
+    #[serde(default)]
     pub framerate: f32,
+    #[serde(default)]
     pub codec: String,
+    #[serde(default = "default_true")]
     pub enabled: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 pub struct ApiClient {

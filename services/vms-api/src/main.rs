@@ -1,26 +1,27 @@
 //! VMS API Service
-//! Gateway REST/GraphQL com suporte a câmeras
+//! Gateway REST com suporte a câmeras e autenticação
 
 use anyhow::Result;
 use axum::{
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
     Router,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tracing::info;
-use tracing_subscriber;
 
-mod routes;
-mod models;
 mod db;
+mod models;
+mod routes;
 
 use db::camera_repository::CameraRepository;
+use db::user_repository::UserRepository;
 
 #[derive(Clone)]
 pub struct AppState {
     pub camera_repo: Arc<CameraRepository>,
+    pub user_repo: Arc<UserRepository>,
 }
 
 #[tokio::main]
@@ -33,8 +34,8 @@ async fn main() -> Result<()> {
     info!("🚀 VMS API Service starting...");
     info!("Version: {}", env!("CARGO_PKG_VERSION"));
 
-    // Conectar ao SQLite
-    let database_url = "sqlite:./vms.db";
+    // Connect to SQLite
+    let database_url = "sqlite:./vms.db?mode=rwc";
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
         .connect(database_url)
@@ -42,54 +43,104 @@ async fn main() -> Result<()> {
 
     info!("📦 Connected to SQLite database");
 
-    // Criar tabela de câmeras
-    let camera_repo = CameraRepository::new(pool);
+    // Initialize repositories
+    let camera_repo = CameraRepository::new(pool.clone());
     camera_repo.create_table().await?;
+
+    let user_repo = UserRepository::new(pool.clone());
+    user_repo.create_table().await?;
 
     info!("✅ Database tables created");
 
     let state = AppState {
         camera_repo: Arc::new(camera_repo),
+        user_repo: Arc::new(user_repo),
     };
 
-    // Rotas de câmeras (novas)
-    let camera_routes = Router::new()
-        .route("/", get(routes::cameras_v2::list_cameras).post(routes::cameras_v2::create_camera))
-        .route("/:id", get(routes::cameras_v2::get_camera).put(routes::cameras_v2::update_camera).delete(routes::cameras_v2::delete_camera))
+    // Auth routes
+    let auth_routes = Router::new()
+        .route("/login", post(routes::auth::login))
         .with_state(state.clone());
 
-    // Rotas antigas (manter compatibilidade)
-    use routes::streams::*;
+    // User routes
+    let user_routes = Router::new()
+        .route(
+            "/",
+            get(routes::auth::list_users).post(routes::auth::create_user),
+        )
+        .route(
+            "/:id",
+            get(routes::auth::get_user)
+                .put(routes::auth::update_user)
+                .delete(routes::auth::delete_user),
+        )
+        .route("/:id/password", post(routes::auth::change_password))
+        .with_state(state.clone());
+
+    // Camera routes
+    let camera_routes = Router::new()
+        .route(
+            "/",
+            get(routes::cameras_v2::list_cameras).post(routes::cameras_v2::create_camera),
+        )
+        .route(
+            "/:id",
+            get(routes::cameras_v2::get_camera)
+                .put(routes::cameras_v2::update_camera)
+                .delete(routes::cameras_v2::delete_camera),
+        )
+        .with_state(state.clone());
+
+    // Legacy routes (backward compatibility)
     use routes::recordings::*;
-    
+    use routes::streams::*;
     use vms_common::camera::CameraInfo;
+
     let camera_store = Arc::new(tokio::sync::RwLock::new(Vec::<CameraInfo>::new()));
-    
+
     let legacy_routes = Router::new()
-        // .route("/cameras/discover", post(discover_cameras))
-        // .route("/cameras/profiles", post(get_camera_profiles))
-        // .route("/cameras/ptz", post(control_ptz))
         .route("/streams", post(start_stream))
         .route("/streams/:id", delete(stop_stream))
         .route("/recordings/:camera_id", get(list_recordings))
-        .route("/recordings/:camera_id/:recording_id", get(download_recording))
+        .route(
+            "/recordings/:camera_id/:recording_id",
+            get(download_recording),
+        )
         .with_state(camera_store);
 
+    // API v1 routes
     let api_routes = Router::new()
+        .nest("/auth", auth_routes)
+        .nest("/users", user_routes)
         .nest("/cameras", camera_routes)
-        .merge(legacy_routes);
+        .merge(legacy_routes)
+        .route("/mjpeg/:camera_id", get(routes::mjpeg::mjpeg_stream))
+        .with_state(state.clone());
+
+    // CORS for clients
+    use tower_http::cors::{Any, CorsLayer};
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
 
     let app = Router::new()
         .route("/health", get(routes::health_check))
-        .route("/metrics", get(|| async { "# API metrics\nvms_api_requests_total 0\n" }))
+        .route(
+            "/metrics",
+            get(|| async { "# API metrics\nvms_api_requests_total 0\n" }),
+        )
         .nest("/api/v1", api_routes)
+        .layer(cors)
         .fallback(routes::not_found);
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 9095));
     let listener = TcpListener::bind(addr).await?;
 
     info!("🌐 HTTP API listening on http://{}", addr);
-    info!("📚 Camera API: http://{}/api/v1/cameras", addr);
+    info!("🔐 Auth API: http://{}/api/v1/auth/login", addr);
+    info!("👥 Users API: http://{}/api/v1/users", addr);
+    info!("📹 Camera API: http://{}/api/v1/cameras", addr);
     info!("✅ Service initialized successfully");
     info!("Press Ctrl+C to stop");
 

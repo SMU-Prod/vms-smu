@@ -22,62 +22,50 @@ impl IngestPipeline {
     pub fn new(config: CameraConfig) -> Result<Self> {
         let pipeline = gst::Pipeline::new();
 
-        info!("⚡ EXTREME OPTIMIZATION MODE - Target: < 50ms");
-        info!("📹 Camera: {} @ {}", config.name, config.url);
+        info!("🔧 Starting RTSP pipeline for camera: {}", config.name);
+        info!("📹 Source: {}", config.url);
+        info!("🔐 Auth: user={:?}, pass_len={:?}", 
+            config.username.as_ref().map(|s| s.as_str()),
+            config.password.as_ref().map(|s| s.len()));
 
-        // RTSP Source - CONFIGURAÇÕES EXTREMAS
+        // RTSP Source - Simplified configuration for compatibility
         let rtspsrc = gst::ElementFactory::make("rtspsrc")
             .name("source")
             .property("location", &config.url)
-            // LATÊNCIA
-            .property("latency", 0u32)                    // ZERO latency
-            .property("buffer-mode", 0i32)                // Slave mode (lowest latency)
-            .property("ntp-sync", false)                  // Disable NTP sync
-            .property("ntp-time-source", 3i32)            // Running time
-            // TRANSPORTE
-            .property("protocols", 0x00000004u32)         // UDP ONLY (fastest)
-            .property("timeout", 5000000u64)              // 5s timeout
-            .property("tcp-timeout", 0u64)                // No TCP fallback
-            .property("do-rtcp", false)                   // Disable RTCP (save bandwidth)
-            // BUFFERING
+            .property("latency", 100u32)                  // Low latency
             .property("drop-on-latency", true)            // Drop old frames
-            .property("do-retransmission", false)         // No retransmission
-            // PERFORMANCE
-            .property("is-live", true)                    // Live source optimization
-            .property("do-timestamp", true)               // Timestamp frames
             .build()
             .context("Failed to create rtspsrc")?;
 
-        // Autenticação
-        if let (Some(user), Some(pass)) = (&config.username, &config.password) {
-            rtspsrc.set_property("user-id", user);
-            rtspsrc.set_property("user-pw", pass);
+        // Autenticação - set if we have non-empty username
+        if let Some(user) = &config.username {
+            if !user.is_empty() {
+                info!("🔐 Setting RTSP auth: user={}", user);
+                rtspsrc.set_property("user-id", user.as_str());
+                if let Some(pass) = &config.password {
+                    rtspsrc.set_property("user-pw", pass.as_str());
+                }
+            }
         }
 
-        // RTP Depayloader - OTIMIZADO
+        // RTP Depayloader
         let depay = gst::ElementFactory::make("rtph264depay")
             .name("depay")
-            .property("wait-for-keyframe", false)         // Don't wait for keyframe
             .build()
             .context("Failed to create depay")?;
 
-        // H264 Parser - CONFIGURAÇÃO AGRESSIVA
+        // H264 Parser
         let parse = gst::ElementFactory::make("h264parse")
             .name("parse")
-            .property("config-interval", -1i32)           // Always send SPS/PPS
-            .property("disable-passthrough", false)       // Enable passthrough
             .build()
             .context("Failed to create h264parse")?;
 
-        // Queue - BUFFER ZERO (máximo risco, mínima latência)
+        // Queue - Basic configuration
         let queue = gst::ElementFactory::make("queue")
             .name("queue")
-            .property("max-size-buffers", 0u32)           // ZERO buffer!
+            .property("max-size-buffers", 2u32)           // Small buffer
             .property("max-size-bytes", 0u32)             
             .property("max-size-time", 0u64)              
-            .property("leaky", 2i32)                      // Downstream leaky
-            .property("flush-on-eos", true)               
-            .property("silent", true)                     
             .build()
             .context("Failed to create queue")?;
 
@@ -162,10 +150,44 @@ impl IngestPipeline {
         info!("  - Quality: 1080p H264 High Profile");
         info!("  - Frame drop: AGGRESSIVE");
 
+        // Add bus watch for error handling
+        let camera_name = self.config.name.clone();
+        if let Some(bus) = self.pipeline.bus() {
+            bus.add_watch(move |_bus, msg| {
+                use gst::MessageView;
+                match msg.view() {
+                    MessageView::Error(err) => {
+                        error!("❌ GStreamer error [{}]: {} (debug: {:?})", 
+                            camera_name,
+                            err.error(), 
+                            err.debug());
+                    }
+                    MessageView::StateChanged(state) => {
+                        if let Some(src) = msg.src() {
+                            if src.name().as_str() == "source" {
+                                info!("🔄 RTSP state: {:?} -> {:?}", 
+                                    state.old(), state.current());
+                            }
+                        }
+                    }
+                    MessageView::Eos(_) => {
+                        warn!("⚠️ EOS received for camera: {}", camera_name);
+                    }
+                    MessageView::Warning(w) => {
+                        warn!("⚠️ GStreamer warning [{}]: {}", camera_name, w.error());
+                    }
+                    _ => (),
+                }
+                gst::glib::ControlFlow::Continue
+            }).expect("Failed to add bus watch");
+        }
+
         self.pipeline
             .set_state(gst::State::Playing)
             .context("Failed to start pipeline")?;
 
+        info!("🚀 Pipeline started - waiting for RTSP connection...");
+        
         Ok(())
     }
 

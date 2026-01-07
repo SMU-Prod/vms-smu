@@ -12,7 +12,6 @@ pub struct Camera {
     pub rtsp_url: String,
     pub onvif_url: Option<String>,
     pub username: String,
-    #[serde(skip_serializing)]
     pub password: String,
     pub resolution_width: u32,
     pub resolution_height: u32,
@@ -55,9 +54,12 @@ impl Camera {
     /// Create new camera from request
     pub fn from_request(req: CreateCameraRequest) -> Self {
         let stream_path = req.stream_path.unwrap_or_else(|| "stream1".to_string());
+        
+        // Generate clean RTSP URL without inline credentials
+        // Credentials are stored separately and used via GStreamer user-id/user-pw
         let rtsp_url = format!(
-            "rtsp://{}:{}@{}:{}/{}",
-            req.username, req.password, req.ip, req.rtsp_port, stream_path
+            "rtsp://{}:{}/{}",
+            req.ip, req.rtsp_port, stream_path
         );
         
         let onvif_url = req.onvif_port.map(|port| {

@@ -4,6 +4,8 @@ pub mod cameras;
 pub mod cameras_v2;
 pub mod streams;
 pub mod recordings;
+pub mod mjpeg;
+pub mod auth;
 // pub mod onvif; // Temporarily disabled
 
 use axum::{http::StatusCode, Json};
