@@ -18,7 +18,7 @@ members = [
     "libs/vms-common",
     "libs/vms-proto",
     "libs/vms-format",
-    "libs/vms-telemetry",
+    "libs/vms-telemetry", "services/vms-player",
 ]
 
 [workspace.package]
