@@ -1,5 +1,4 @@
 import { createSignal, createEffect, Show, For } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 
 // Types
@@ -25,6 +24,18 @@ interface Camera {
   enabled: boolean;
   resolution_width: number;
   resolution_height: number;
+}
+
+interface Server {
+  id: string;
+  name: string;
+  ip: string;
+  port: number;
+  username: string;
+  status: "online" | "offline" | "error";
+  enabled: boolean;
+  webrtc_url: string;
+  created_at: string;
 }
 
 // Icons as SVG components
@@ -90,12 +101,14 @@ function App() {
   // Data state
   const [cameras, setCameras] = createSignal<Camera[]>([]);
   const [users, setUsers] = createSignal<User[]>([]);
+  const [servers, setServers] = createSignal<Server[]>([]);
+  const [showServerModal, setShowServerModal] = createSignal(false);
 
-  // Load data on auth
   createEffect(() => {
     if (token()) {
       loadCameras();
       loadUsers();
+      loadServers();
     }
   });
 
@@ -155,6 +168,53 @@ function App() {
       }
     } catch (e) {
       console.error("Failed to load users:", e);
+    }
+  }
+
+  async function loadServers() {
+    try {
+      const res = await fetch(`${API_URL}/servers`, {
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      if (res.ok) {
+        setServers(await res.json());
+      }
+    } catch (e) {
+      console.error("Failed to load servers:", e);
+    }
+  }
+
+  async function createServer(data: { name: string; ip: string; port: number; username: string; password: string }) {
+    try {
+      const res = await fetch(`${API_URL}/servers`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token()}`,
+        },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        loadServers();
+        setShowServerModal(false);
+      }
+    } catch (e) {
+      console.error("Failed to create server:", e);
+    }
+  }
+
+  async function deleteServer(id: string) {
+    if (!confirm("Tem certeza que deseja excluir este servidor?")) return;
+    try {
+      const res = await fetch(`${API_URL}/servers/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      if (res.ok) {
+        loadServers();
+      }
+    } catch (e) {
+      console.error("Failed to delete server:", e);
     }
   }
 
@@ -371,12 +431,162 @@ function App() {
     );
   }
 
+  // Servers Page
+  function ServersPage() {
+    const [serverName, setServerName] = createSignal("");
+    const [serverIp, setServerIp] = createSignal("");
+    const [serverPort, setServerPort] = createSignal("9094");
+    const [serverUser, setServerUser] = createSignal("");
+    const [serverPass, setServerPass] = createSignal("");
+
+    const handleCreate = (e: Event) => {
+      e.preventDefault();
+      createServer({
+        name: serverName(),
+        ip: serverIp(),
+        port: parseInt(serverPort()) || 9094,
+        username: serverUser(),
+        password: serverPass(),
+      });
+      setServerName("");
+      setServerIp("");
+      setServerPort("9094");
+      setServerUser("");
+      setServerPass("");
+    };
+
+    return (
+      <>
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Servidores de Streaming</h3>
+            <button class="btn btn-primary" onClick={() => setShowServerModal(true)}>
+              + Novo Servidor
+            </button>
+          </div>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>IP</th>
+                <th>Porta</th>
+                <th>Usuário</th>
+                <th>Status</th>
+                <th>WebRTC URL</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              <For each={servers()}>
+                {(s) => (
+                  <tr>
+                    <td>{s.name}</td>
+                    <td style="font-family: monospace">{s.ip}</td>
+                    <td>{s.port}</td>
+                    <td>{s.username}</td>
+                    <td>
+                      <span class={`status status-${s.status}`}>
+                        {s.status}
+                      </span>
+                    </td>
+                    <td style="font-family: monospace; font-size: 11px">{s.webrtc_url}</td>
+                    <td>
+                      <button
+                        class="btn btn-danger"
+                        style="padding: 6px 12px"
+                        onClick={() => deleteServer(s.id)}
+                      >
+                        🗑️
+                      </button>
+                    </td>
+                  </tr>
+                )}
+              </For>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Create Server Modal */}
+        <Show when={showServerModal()}>
+          <div class="modal-overlay" onClick={() => setShowServerModal(false)}>
+            <div class="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div class="modal-header">
+                <h2>Novo Servidor</h2>
+                <button class="modal-close" onClick={() => setShowServerModal(false)}>×</button>
+              </div>
+              <form onSubmit={handleCreate}>
+                <div class="form-group">
+                  <label>Nome</label>
+                  <input
+                    type="text"
+                    value={serverName()}
+                    onInput={(e) => setServerName(e.currentTarget.value)}
+                    placeholder="Servidor Principal"
+                    required
+                  />
+                </div>
+                <div class="form-group">
+                  <label>IP</label>
+                  <input
+                    type="text"
+                    value={serverIp()}
+                    onInput={(e) => setServerIp(e.currentTarget.value)}
+                    placeholder="192.168.1.100"
+                    required
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Porta</label>
+                  <input
+                    type="number"
+                    value={serverPort()}
+                    onInput={(e) => setServerPort(e.currentTarget.value)}
+                    placeholder="9094"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Usuário</label>
+                  <input
+                    type="text"
+                    value={serverUser()}
+                    onInput={(e) => setServerUser(e.currentTarget.value)}
+                    placeholder="admin"
+                    required
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Senha</label>
+                  <input
+                    type="password"
+                    value={serverPass()}
+                    onInput={(e) => setServerPass(e.currentTarget.value)}
+                    placeholder="••••••"
+                    required
+                  />
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary" onClick={() => setShowServerModal(false)}>
+                    Cancelar
+                  </button>
+                  <button type="submit" class="btn btn-primary">
+                    Criar Servidor
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </Show>
+      </>
+    );
+  }
+
   // Main App Layout
   function MainLayout() {
     const pages: Record<string, () => any> = {
       dashboard: Dashboard,
       cameras: CamerasPage,
       users: UsersPage,
+      servers: ServersPage,
     };
 
     const PageComponent = () => {
@@ -421,9 +631,12 @@ function App() {
                 <Icons.Users />
                 <span>Users</span>
               </div>
-              <div class="nav-item">
+              <div
+                class={`nav-item ${currentPage() === "servers" ? "active" : ""}`}
+                onClick={() => setCurrentPage("servers")}
+              >
                 <Icons.Server />
-                <span>Servers</span>
+                <span>Servidores</span>
               </div>
               <div class="nav-item">
                 <Icons.Settings />
