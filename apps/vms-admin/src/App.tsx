@@ -13,19 +13,65 @@ interface User {
 }
 
 interface LoginResponse {
-  token: string;
+  access_token: string;
+  refresh_token: string;
   user: User;
-  expires_at: string;
+  expires_in: number;
 }
 
 interface Camera {
   id: string;
   name: string;
+  description?: string;
+  manufacturer: string;
+  model: string;
+  firmware?: string;
   rtsp_url: string;
+  onvif_url?: string;
+  username: string;
+  password: string;
+  shortcut?: string;
+  recording_dir?: string;
+  notes?: string;
   enabled: boolean;
   resolution_width: number;
   resolution_height: number;
 }
+
+// Camera form data (based on Digifort model)
+interface CameraFormData {
+  name: string;
+  description: string;
+  manufacturer: string;
+  model: string;
+  firmware: string;
+  ip: string;
+  rtsp_port: number;
+  onvif_port: number;
+  username: string;
+  password: string;
+  stream_path: string;
+  recording_path: string;       // Diretório de gravação
+  connection_timeout_ms: number; // Timeout da conexão
+  latitude: number;             // Coordenadas
+  longitude: number;
+  notes: string;
+  transport: string;            // Auto/TCP/UDP
+  enabled: boolean;
+}
+
+// Manufacturer/Model/Firmware options
+const MANUFACTURERS = ["TP-Link", "Hikvision", "Dahua", "Intelbras", "Axis", "Samsung", "Generic"];
+const MODELS: Record<string, string[]> = {
+  "TP-Link": ["Tapo C100", "Tapo C200", "Tapo C310", "Tapo C320WS"],
+  "Hikvision": ["DS-2CD2032", "DS-2CD2042WD", "DS-2CD2143G0-I"],
+  "Dahua": ["IPC-HFW2431S", "IPC-HDBW2431E"],
+  "Intelbras": ["VIP 1130 B", "VIP 3230 B", "VIP 1020 B"],
+  "Axis": ["P3245-V", "M3057-PLVE"],
+  "Samsung": ["SNV-6084R", "XNV-8080R"],
+  "Generic": ["IP Camera"]
+};
+const FIRMWARE_VERSIONS = ["Automático", "1.0.0", "1.1.0", "2.0.0", "Personalizado"];
 
 // Icons as SVG components
 const Icons = {
@@ -91,6 +137,125 @@ function App() {
   const [cameras, setCameras] = createSignal<Camera[]>([]);
   const [users, setUsers] = createSignal<User[]>([]);
 
+  // Camera form modal state
+  const [showCameraModal, setShowCameraModal] = createSignal(false);
+  const [cameraForm, setCameraForm] = createSignal<CameraFormData>({
+    name: "",
+    description: "",
+    manufacturer: "Generic",
+    model: "IP Camera",
+    firmware: "Automático",
+    ip: "",
+    rtsp_port: 554,
+    onvif_port: 2020,
+    username: "",
+    password: "",
+    stream_path: "stream1",
+    recording_path: "",
+    connection_timeout_ms: 30000,
+    latitude: 0,
+    longitude: 0,
+    notes: "",
+    transport: "auto",
+    enabled: true
+  });
+
+  // Create camera API call
+  async function createCamera() {
+    setLoading(true);
+    const form = cameraForm();
+    try {
+      // If editing, use PUT to update existing camera
+      if (editingCamera()) {
+        const res = await fetch(`${API_URL}/cameras/${editingCamera()!.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token()}`
+          },
+          body: JSON.stringify({
+            name: form.name,
+            description: form.description || null,
+            manufacturer: form.manufacturer,
+            model: form.model,
+            firmware: form.firmware || null,
+            ip: form.ip,
+            rtsp_port: form.rtsp_port,
+            onvif_port: form.onvif_port || null,
+            username: form.username,
+            password: form.password,
+            stream_path: form.stream_path,
+            enabled: form.enabled
+          }),
+        });
+        if (res.ok) {
+          setShowCameraModal(false);
+          setEditingCamera(null);
+          loadCameras();
+          alert('Câmera atualizada com sucesso!');
+        } else {
+          const err = await res.json();
+          alert(err.error || "Erro ao atualizar câmera");
+        }
+        setLoading(false);
+        return;
+      }
+
+      // Creating new camera - get node first
+      const nodesRes = await fetch(`${API_URL}/nodes`, {
+        headers: { Authorization: `Bearer ${token()}` }
+      });
+      const nodes = await nodesRes.json();
+      const nodeId = nodes[0]?.id;
+      if (!nodeId) {
+        alert("Nenhum node registrado! Inicie o vms_node primeiro.");
+        setLoading(false);
+        return;
+      }
+
+      const res = await fetch(`${API_URL}/cameras`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token()}`
+        },
+        body: JSON.stringify({
+          node_id: nodeId,
+          name: form.name,
+          description: form.description || null,
+          manufacturer: form.manufacturer,
+          model: form.model,
+          firmware: form.firmware || null,
+          ip: form.ip,
+          rtsp_port: form.rtsp_port,
+          onvif_port: form.onvif_port || null,
+          username: form.username,
+          password: form.password,
+          stream_path: form.stream_path,
+          enabled: form.enabled
+        }),
+      });
+      if (res.ok) {
+        setShowCameraModal(false);
+        loadCameras();
+        // Reset form
+        setCameraForm({
+          name: "", description: "", manufacturer: "Generic", model: "IP Camera",
+          firmware: "Automático", ip: "", rtsp_port: 554, onvif_port: 2020,
+          username: "", password: "", stream_path: "stream1", recording_path: "",
+          connection_timeout_ms: 30000, latitude: 0, longitude: 0, notes: "", transport: "auto", enabled: true
+        });
+      } else {
+        const err = await res.json();
+        alert(err.error || "Erro ao criar câmera");
+      }
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   // Load data on auth
   createEffect(() => {
     if (token()) {
@@ -100,14 +265,14 @@ function App() {
   });
 
   // API calls
-  async function login(username: string, password: string) {
+  async function login(email: string, password: string) {
     setLoading(true);
     setError("");
     try {
       const res = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ email, password }),
       });
 
       if (!res.ok) {
@@ -116,9 +281,9 @@ function App() {
       }
 
       const data: LoginResponse = await res.json();
-      setToken(data.token);
+      setToken(data.access_token);
       setUser(data.user);
-      localStorage.setItem("token", data.token);
+      localStorage.setItem("token", data.access_token);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -158,6 +323,65 @@ function App() {
     }
   }
 
+  // Signal for editing camera
+  const [editingCamera, setEditingCamera] = createSignal<Camera | null>(null);
+
+  // Open edit modal with camera data
+  function openEditModal(camera: Camera) {
+    // Parse RTSP URL to extract IP and port
+    const rtspMatch = camera.rtsp_url.match(/rtsp:\/\/([^:\/]+):?(\d+)?(.*)$/);
+    const ip = rtspMatch ? rtspMatch[1] : '';
+    const port = rtspMatch && rtspMatch[2] ? parseInt(rtspMatch[2]) : 554;
+    const path = rtspMatch ? rtspMatch[3].replace(/^\//, '') : 'stream1';
+
+    setCameraForm({
+      name: camera.name,
+      description: camera.description || '',
+      manufacturer: camera.manufacturer,
+      model: camera.model,
+      firmware: camera.firmware || 'Automático',
+      ip: ip,
+      rtsp_port: port,
+      onvif_port: 2020,
+      username: camera.username || '',
+      password: camera.password || '',
+      stream_path: path,
+      recording_path: camera.recording_dir || '',
+      connection_timeout_ms: 30000,
+      latitude: 0,
+      longitude: 0,
+      notes: camera.notes || '',
+      transport: 'auto',
+      enabled: camera.enabled
+    });
+    setEditingCamera(camera);
+    setShowCameraModal(true);
+  }
+
+  // Delete camera
+  async function deleteCamera(cameraId: string, cameraName: string) {
+    if (!confirm(`Tem certeza que deseja excluir a câmera "${cameraName}"?`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_URL}/cameras/${cameraId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token()}` }
+      });
+
+      if (res.ok) {
+        alert(`Câmera "${cameraName}" excluída com sucesso!`);
+        loadCameras();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Erro ao excluir câmera');
+      }
+    } catch (e: any) {
+      alert(`Erro: ${e.message}`);
+    }
+  }
+
   // Login Screen
   function LoginScreen() {
     const [username, setUsername] = createSignal("");
@@ -183,11 +407,11 @@ function App() {
 
           <form onSubmit={handleSubmit}>
             <div class="form-group">
-              <label>Username</label>
+              <label>Usuário</label>
               <input
                 type="text"
                 class="input"
-                placeholder="Enter username"
+                placeholder="admin"
                 value={username()}
                 onInput={(e) => setUsername(e.currentTarget.value)}
                 required
@@ -287,45 +511,285 @@ function App() {
     );
   }
 
-  // Cameras Page
+  // Cameras Page with Modal
   function CamerasPage() {
+    const updateField = (field: keyof CameraFormData, value: any) => {
+      setCameraForm({ ...cameraForm(), [field]: value });
+    };
+
     return (
-      <div class="card">
-        <div class="card-header">
-          <h3 class="card-title">Cameras</h3>
-          <button class="btn btn-primary">+ Add Camera</button>
-        </div>
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>RTSP URL</th>
-              <th>Resolution</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <For each={cameras()}>
-              {(camera) => (
+      <>
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Câmeras</h3>
+            <button class="btn btn-primary" onClick={() => setShowCameraModal(true)}>
+              + Adicionar Câmera
+            </button>
+          </div>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>Fabricante</th>
+                <th>Modelo</th>
+                <th>RTSP URL</th>
+                <th>Status</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              <For each={cameras()}>
+                {(camera) => (
+                  <tr>
+                    <td>{camera.name}</td>
+                    <td>{camera.manufacturer}</td>
+                    <td>{camera.model}</td>
+                    <td style="font-family: monospace; font-size: 11px">{camera.rtsp_url}</td>
+                    <td>
+                      <span class={`status ${camera.enabled ? "status-online" : "status-offline"}`}>
+                        {camera.enabled ? "Ativa" : "Inativa"}
+                      </span>
+                    </td>
+                    <td style="display: flex; gap: 8px">
+                      <button
+                        class="btn btn-secondary"
+                        style="padding: 6px 12px"
+                        onClick={() => openEditModal(camera)}
+                      >
+                        ✏️ Editar
+                      </button>
+                      <button
+                        class="btn"
+                        style="padding: 6px 12px; background: #dc3545; color: white"
+                        onClick={() => deleteCamera(camera.id, camera.name)}
+                      >
+                        🗑️ Excluir
+                      </button>
+                    </td>
+                  </tr>
+                )}
+              </For>
+              <Show when={cameras().length === 0}>
                 <tr>
-                  <td>{camera.name}</td>
-                  <td style="font-family: monospace; font-size: 12px">{camera.rtsp_url}</td>
-                  <td>{camera.resolution_width}x{camera.resolution_height}</td>
-                  <td>
-                    <span class={`status ${camera.enabled ? "status-online" : "status-offline"}`}>
-                      {camera.enabled ? "Online" : "Offline"}
-                    </span>
-                  </td>
-                  <td>
-                    <button class="btn btn-secondary" style="padding: 6px 12px">Edit</button>
+                  <td colspan="6" style="text-align: center; color: var(--text-muted)">
+                    Nenhuma câmera configurada
                   </td>
                 </tr>
-              )}
-            </For>
-          </tbody>
-        </table>
-      </div>
+              </Show>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Camera Form Modal */}
+        <Show when={showCameraModal()}>
+          <div class="modal-overlay" onClick={() => { setShowCameraModal(false); setEditingCamera(null); }}>
+            <div class="modal" onClick={(e) => e.stopPropagation()} style="width: 700px; max-height: 85vh; overflow-y: auto">
+              <div class="modal-header">
+                <h2>{editingCamera() ? `Editar Câmera: ${editingCamera()!.name}` : 'Nova Câmera'}</h2>
+                <button class="modal-close" onClick={() => { setShowCameraModal(false); setEditingCamera(null); }}>&times;</button>
+              </div>
+              <div class="modal-body">
+                {/* Row 1: Nome e Descrição */}
+                <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px">
+                  <div class="form-group">
+                    <label>Nome da Câmera *</label>
+                    <input
+                      type="text" class="input" placeholder="Ex: Entrada Principal"
+                      value={cameraForm().name}
+                      onInput={(e) => updateField("name", e.currentTarget.value)}
+                      required
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label>Descrição</label>
+                    <input
+                      type="text" class="input" placeholder="Ex: Câmera de vigilância"
+                      value={cameraForm().description}
+                      onInput={(e) => updateField("description", e.currentTarget.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* Row 2: Fabricante, Modelo, Firmware */}
+                <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px">
+                  <div class="form-group">
+                    <label>Fabricante *</label>
+                    <select
+                      class="input"
+                      value={cameraForm().manufacturer}
+                      onChange={(e) => {
+                        const mfr = e.currentTarget.value;
+                        updateField("manufacturer", mfr);
+                        updateField("model", MODELS[mfr]?.[0] || "IP Camera");
+                      }}
+                    >
+                      <For each={MANUFACTURERS}>
+                        {(mfr) => <option value={mfr}>{mfr}</option>}
+                      </For>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>Modelo *</label>
+                    <select
+                      class="input"
+                      value={cameraForm().model}
+                      onChange={(e) => updateField("model", e.currentTarget.value)}
+                    >
+                      <For each={MODELS[cameraForm().manufacturer] || ["IP Camera"]}>
+                        {(model) => <option value={model}>{model}</option>}
+                      </For>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>Firmware</label>
+                    <select
+                      class="input"
+                      value={cameraForm().firmware}
+                      onChange={(e) => updateField("firmware", e.currentTarget.value)}
+                    >
+                      <For each={FIRMWARE_VERSIONS}>
+                        {(fw) => <option value={fw}>{fw}</option>}
+                      </For>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Row 3: IP, Porta RTSP, Porta Firmware */}
+                <div class="form-row" style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 16px">
+                  <div class="form-group">
+                    <label>IP da Câmera *</label>
+                    <input
+                      type="text" class="input" placeholder="192.168.1.100"
+                      value={cameraForm().ip}
+                      onInput={(e) => updateField("ip", e.currentTarget.value)}
+                      required
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label>Porta RTSP</label>
+                    <input
+                      type="number" class="input"
+                      value={cameraForm().rtsp_port}
+                      onInput={(e) => updateField("rtsp_port", parseInt(e.currentTarget.value) || 554)}
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label>Porta (Firmware)</label>
+                    <input
+                      type="number" class="input"
+                      value={cameraForm().onvif_port}
+                      onInput={(e) => updateField("onvif_port", parseInt(e.currentTarget.value) || 80)}
+                    />
+                  </div>
+                </div>
+
+                {/* Row 4: Usuário, Senha, Stream */}
+                <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px">
+                  <div class="form-group">
+                    <label>Usuário *</label>
+                    <input
+                      type="text" class="input" placeholder="admin"
+                      value={cameraForm().username}
+                      onInput={(e) => updateField("username", e.currentTarget.value)}
+                      required
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label>Senha *</label>
+                    <input
+                      type="password" class="input" placeholder="********"
+                      value={cameraForm().password}
+                      onInput={(e) => updateField("password", e.currentTarget.value)}
+                      required
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label>Stream Path</label>
+                    <input
+                      type="text" class="input" placeholder="stream1"
+                      value={cameraForm().stream_path}
+                      onInput={(e) => updateField("stream_path", e.currentTarget.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* Row 5: Diretório de Gravação e Timeout */}
+                <div class="form-row" style="display: grid; grid-template-columns: 2fr 1fr; gap: 16px">
+                  <div class="form-group">
+                    <label>Diretório de Gravação</label>
+                    <div style="display: flex; gap: 8px">
+                      <input
+                        type="text" class="input" placeholder="D:\Recordings\Camera1"
+                        value={cameraForm().recording_path}
+                        onInput={(e) => updateField("recording_path", e.currentTarget.value)}
+                        style="flex: 1"
+                      />
+                      <button
+                        class="btn btn-secondary"
+                        style="padding: 8px 12px"
+                        onClick={async () => {
+                          try {
+                            const { open } = await import("@tauri-apps/plugin-dialog");
+                            const selected = await open({ directory: true });
+                            if (selected) updateField("recording_path", selected);
+                          } catch (e) { console.error(e); }
+                        }}
+                      >
+                        📁
+                      </button>
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label>Timeout Conexão (ms)</label>
+                    <input
+                      type="number" class="input" placeholder="30000"
+                      value={cameraForm().connection_timeout_ms}
+                      onInput={(e) => updateField("connection_timeout_ms", parseInt(e.currentTarget.value))}
+                    />
+                  </div>
+                </div>
+
+                {/* Row 6: Observações */}
+                <div class="form-group">
+                  <label>Observações</label>
+                  <textarea
+                    class="input"
+                    rows="3"
+                    placeholder="Anotações sobre esta câmera..."
+                    value={cameraForm().notes}
+                    onInput={(e) => updateField("notes", e.currentTarget.value)}
+                    style="resize: vertical"
+                  />
+                </div>
+
+                {/* Row 7: Ativar Câmera */}
+                <div class="form-group" style="display: flex; align-items: center; gap: 12px; margin-top: 12px">
+                  <input
+                    type="checkbox"
+                    id="enabled-checkbox"
+                    checked={cameraForm().enabled}
+                    onChange={(e) => updateField("enabled", e.currentTarget.checked)}
+                    style="width: 20px; height: 20px"
+                  />
+                  <label for="enabled-checkbox" style="margin: 0; font-weight: 600">
+                    Ativar Câmera (liga gravação e visualização)
+                  </label>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--border)">
+                <button class="btn btn-secondary" onClick={() => setShowCameraModal(false)}>
+                  Cancelar
+                </button>
+                <button class="btn btn-primary" onClick={createCamera} disabled={loading()}>
+                  {loading() ? "Salvando..." : "OK - Salvar"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </Show>
+      </>
     );
   }
 
@@ -371,12 +835,164 @@ function App() {
     );
   }
 
+  // Servers Page - CRUD de servidores
+  function ServersPage() {
+    const [servers, setServers] = createSignal<any[]>([]);
+    const [showModal, setShowModal] = createSignal(false);
+    const [serverForm, setServerForm] = createSignal({ name: "", ip: "", port: 9095 });
+
+    // Load servers on mount
+    createEffect(() => {
+      loadServers();
+    });
+
+    async function loadServers() {
+      try {
+        const res = await fetch(`${API_URL}/nodes`, {
+          headers: { Authorization: `Bearer ${token()}` }
+        });
+        if (res.ok) {
+          setServers(await res.json());
+        }
+      } catch (e) {
+        console.error("Failed to load servers:", e);
+      }
+    }
+
+    async function createServer() {
+      const form = serverForm();
+      if (!form.name || !form.ip) {
+        alert("Nome e IP são obrigatórios");
+        return;
+      }
+      try {
+        const res = await fetch(`${API_URL}/nodes/register`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token()}`
+          },
+          body: JSON.stringify(form)
+        });
+        if (res.ok) {
+          setShowModal(false);
+          setServerForm({ name: "", ip: "", port: 9095 });
+          loadServers();
+          alert("Servidor criado com sucesso!");
+        } else {
+          const err = await res.json();
+          alert(err.error || "Erro ao criar servidor");
+        }
+      } catch (e: any) {
+        alert(e.message);
+      }
+    }
+
+    async function deleteServer(id: string, name: string) {
+      if (!confirm(`Excluir servidor "${name}"? Todas as câmeras vinculadas serão excluídas.`)) return;
+      try {
+        const res = await fetch(`${API_URL}/nodes/${id}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token()}` }
+        });
+        if (res.ok) {
+          loadServers();
+          alert("Servidor excluído!");
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    return (
+      <>
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Servidores</h3>
+            <button class="btn btn-primary" onClick={() => setShowModal(true)}>+ Novo Servidor</button>
+          </div>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>IP</th>
+                <th>Porta</th>
+                <th>Status</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              <For each={servers()}>
+                {(s) => (
+                  <tr>
+                    <td>{s.name}</td>
+                    <td>{s.ip}</td>
+                    <td>{s.port}</td>
+                    <td>
+                      <span class={`status ${s.status === "online" ? "status-online" : "status-offline"}`}>
+                        {s.status === "online" ? "Online" : "Offline"}
+                      </span>
+                    </td>
+                    <td>
+                      <button class="btn btn-danger" style="padding: 6px 12px" onClick={() => deleteServer(s.id, s.name)}>Excluir</button>
+                    </td>
+                  </tr>
+                )}
+              </For>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Modal Novo Servidor */}
+        <Show when={showModal()}>
+          <div class="modal-overlay" onClick={() => setShowModal(false)}>
+            <div class="modal" onClick={(e) => e.stopPropagation()}>
+              <div class="modal-header">
+                <h2>Novo Servidor</h2>
+                <button class="close-btn" onClick={() => setShowModal(false)}>×</button>
+              </div>
+              <div class="modal-body">
+                <div class="form-group">
+                  <label>Nome do Servidor *</label>
+                  <input type="text" class="input" placeholder="Servidor Principal"
+                    value={serverForm().name}
+                    onInput={(e) => setServerForm({ ...serverForm(), name: e.currentTarget.value })}
+                  />
+                </div>
+                <div class="form-group">
+                  <label>IP da Máquina *</label>
+                  <input type="text" class="input" placeholder="192.168.1.100"
+                    value={serverForm().ip}
+                    onInput={(e) => setServerForm({ ...serverForm(), ip: e.currentTarget.value })}
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Porta</label>
+                  <input type="number" class="input"
+                    value={serverForm().port}
+                    onInput={(e) => setServerForm({ ...serverForm(), port: parseInt(e.currentTarget.value) || 9095 })}
+                  />
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button class="btn btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
+                <button class="btn btn-primary" onClick={createServer}>Criar Servidor</button>
+              </div>
+            </div>
+          </div>
+        </Show>
+      </>
+    );
+  }
+
   // Main App Layout
   function MainLayout() {
     const pages: Record<string, () => any> = {
       dashboard: Dashboard,
       cameras: CamerasPage,
       users: UsersPage,
+      servers: ServersPage,
+      settings: () => <div class="card"><h2>Configurações</h2><p>Em desenvolvimento...</p></div>,
     };
 
     const PageComponent = () => {
@@ -421,11 +1037,17 @@ function App() {
                 <Icons.Users />
                 <span>Users</span>
               </div>
-              <div class="nav-item">
+              <div
+                class={`nav-item ${currentPage() === "servers" ? "active" : ""}`}
+                onClick={() => setCurrentPage("servers")}
+              >
                 <Icons.Server />
                 <span>Servers</span>
               </div>
-              <div class="nav-item">
+              <div
+                class={`nav-item ${currentPage() === "settings" ? "active" : ""}`}
+                onClick={() => setCurrentPage("settings")}
+              >
                 <Icons.Settings />
                 <span>Settings</span>
               </div>

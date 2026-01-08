@@ -1,0 +1,59 @@
+[package]
+name = "vms_server"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "vms-server"
+path = "src/main.rs"
+
+[dependencies]
+# Core types
+vms_core = { path = "../vms_core" }
+
+# Runtime
+tokio = { workspace = true }
+
+# Web Framework
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { version = "0.5", features = ["cors"] }
+hyper = { workspace = true }
+
+# Database
+sqlx = { version = "0.7", features = ["sqlite", "runtime-tokio"] }
+
+# Hashing
+sha2 = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Types
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+# Errors
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Security
+jsonwebtoken = { workspace = true }
+argon2 = { workspace = true }
+
+# Observability
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Utilities
+futures = { workspace = true }
+rand = "0.8"
+tokio-util = { version = "0.7", features = ["io"] }
+tokio-stream = "0.1"
+percent-encoding = "2.3"
+
+# WebRTC
+webrtc = "0.11"

@@ -34,6 +34,10 @@ interface PlayerResult {
 // API Base URL
 const API_URL = "http://localhost:9095/api/v1";
 
+// WebRTC connection storage
+const webrtcConnections = new Map<string, RTCPeerConnection>();
+const videoElements = new Map<string, HTMLVideoElement>();
+
 function App() {
   // State
   const [cameras, setCameras] = createSignal<Camera[]>([]);
@@ -42,13 +46,32 @@ function App() {
   const [currentTime, setCurrentTime] = createSignal(new Date().toLocaleTimeString());
   const [statusMessage, setStatusMessage] = createSignal("");
   const [gstreamerAvailable, setGstreamerAvailable] = createSignal(false);
-  const [useNativePlayer, setUseNativePlayer] = createSignal(true);
+  // WebRTC mode - low latency inline video
+  const [useNativePlayer, setUseNativePlayer] = createSignal(false); // MJPEG (funciona)
+  const [isLoggedIn, setIsLoggedIn] = createSignal(false);
 
-  // Load cameras and check GStreamer on mount
+  // Auto-login and load cameras on mount
   onMount(async () => {
+    await autoLogin();
     await loadCameras();
     await checkGStreamer();
   });
+
+  // Auto-login with default credentials
+  async function autoLogin() {
+    try {
+      const result = await invoke<{ success: boolean; message: string }>("api_login", {
+        email: "admin@vms.local",
+        password: "admin123"
+      });
+      console.log("Login result:", result);
+      setIsLoggedIn(result.success);
+    } catch (e) {
+      console.log("Tauri login failed, will use HTTP:", e);
+      // For HTTP mode, we don't need auth for cameras list
+      setIsLoggedIn(true);
+    }
+  }
 
   // Update time every second
   createEffect(() => {
@@ -65,13 +88,24 @@ function App() {
 
   async function loadCameras() {
     try {
-      const res = await fetch(`${API_URL}/cameras`);
-      if (res.ok) {
-        const data = await res.json();
-        setCameras(data);
-      }
+      // Try Tauri invoke first (works in native app)
+      const data = await invoke<Camera[]>("api_list_cameras");
+      setCameras(data);
+      console.log("Loaded cameras via Tauri:", data.length);
+
     } catch (e) {
-      console.error("Failed to load cameras:", e);
+      console.log("Tauri invoke failed, trying HTTP fetch:", e);
+      // Fallback to HTTP fetch (works in browser dev mode)
+      try {
+        const res = await fetch(`${API_URL}/cameras`);
+        if (res.ok) {
+          const data = await res.json();
+          setCameras(data);
+          console.log("Loaded cameras via HTTP:", data.length);
+        }
+      } catch (httpError) {
+        console.error("Failed to load cameras:", httpError);
+      }
     }
   }
 
@@ -97,23 +131,140 @@ function App() {
     setTimeout(() => setStatusMessage(""), 4000);
   }
 
+  // Start WebRTC connection for low-latency inline video
+  async function startWebRTC(camera: Camera, videoEl: HTMLVideoElement) {
+    showStatus(`🔗 Conectando WebRTC para ${camera.name}...`);
+
+    try {
+      // Create peer connection with STUN server
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      });
+
+      webrtcConnections.set(camera.id, pc);
+      videoElements.set(camera.id, videoEl);
+
+      // Handle incoming video stream
+      pc.ontrack = (event) => {
+        console.log('[WebRTC] Track received:', event.track.kind);
+        if (event.streams[0]) {
+          videoEl.srcObject = event.streams[0];
+          videoEl.play().catch(e => console.error('Autoplay failed:', e));
+        }
+      };
+
+      // Log ICE connection state
+      pc.oniceconnectionstatechange = () => {
+        console.log('[WebRTC] ICE state:', pc.iceConnectionState);
+        if (pc.iceConnectionState === 'connected') {
+          showStatus(`✅ ${camera.name} - WebRTC conectado!`);
+        } else if (pc.iceConnectionState === 'failed') {
+          showStatus(`❌ ${camera.name} - Conexão falhou`);
+        }
+      };
+
+      // Collect and send ICE candidates
+      pc.onicecandidate = async (event) => {
+        if (event.candidate) {
+          try {
+            await fetch(`${API_URL}/webrtc/ice/${camera.id}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                candidate: event.candidate.candidate,
+                sdpMid: event.candidate.sdpMid,
+                sdpMLineIndex: event.candidate.sdpMLineIndex
+              })
+            });
+          } catch (e) {
+            console.error('[WebRTC] ICE candidate error:', e);
+          }
+        }
+      };
+
+      // Add receive-only transceivers for video and audio
+      pc.addTransceiver('video', { direction: 'recvonly' });
+      pc.addTransceiver('audio', { direction: 'recvonly' });
+
+      // Create and send SDP offer
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      const response = await fetch(`${API_URL}/webrtc/offer/${camera.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sdp: offer.sdp,
+          type: offer.type
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const answer = await response.json();
+      await pc.setRemoteDescription(new RTCSessionDescription({
+        type: answer.type,
+        sdp: answer.sdp
+      }));
+
+      setActivePlayers([...activePlayers(), camera.id]);
+      console.log('[WebRTC] Connection established for', camera.name);
+
+    } catch (e) {
+      console.error('[WebRTC] Connection failed:', e);
+      showStatus(`❌ WebRTC falhou: ${e}`);
+      stopWebRTC(camera.id);
+    }
+  }
+
+  // Stop WebRTC connection
+  function stopWebRTC(cameraId: string) {
+    const pc = webrtcConnections.get(cameraId);
+    if (pc) {
+      pc.close();
+      webrtcConnections.delete(cameraId);
+    }
+
+    const video = videoElements.get(cameraId);
+    if (video) {
+      video.srcObject = null;
+      videoElements.delete(cameraId);
+    }
+
+    setActivePlayers(activePlayers().filter(id => id !== cameraId));
+  }
+
+  // Stream URL response type
+  interface StreamUrlResponse {
+    rtsp_url: string;
+    camera_name: string;
+    resolution: [number, number];
+  }
+
   async function startPlayer(camera: Camera) {
     if (!useNativePlayer()) {
       showStatus("Modo MJPEG (baixa performance)");
       return;
     }
 
-    const config: CameraConfig = {
-      id: camera.id,
-      name: camera.name,
-      rtsp_url: camera.rtsp_url,
-      username: camera.username,
-      password: camera.password,
-      width: camera.resolution_width,
-      height: camera.resolution_height,
-    };
-
     try {
+      // First fetch authenticated RTSP URL from server
+      showStatus(`🔄 Obtendo URL para ${camera.name}...`);
+      const streamInfo = await invoke<StreamUrlResponse>("api_get_stream_url", { cameraId: camera.id });
+
+      // Build camera config with authenticated URL
+      const config: CameraConfig = {
+        id: camera.id,
+        name: camera.name,
+        rtsp_url: streamInfo.rtsp_url, // Already has credentials embedded
+        username: "", // Not needed - URL has credentials
+        password: "", // Not needed - URL has credentials
+        width: streamInfo.resolution[0] || 1920,
+        height: streamInfo.resolution[1] || 1080,
+      };
+
       const result = await invoke<PlayerResult>("start_player", { camera: config });
       if (result.success) {
         setActivePlayers([...activePlayers(), camera.id]);
@@ -156,8 +307,11 @@ function App() {
     return `${API_URL}/mjpeg/${cameraId}`;
   }
 
-  // Camera Tile Component
+  // Camera Tile Component with WebRTC inline video
   function CameraTile(props: { camera?: Camera; isEmpty?: boolean; index: number }) {
+    // Each tile has its own video ref - critical for WebRTC to work correctly!
+    let tileVideoRef: HTMLVideoElement | null = null;
+
     if (props.isEmpty || !props.camera) {
       return <div class="camera-tile empty" />;
     }
@@ -165,50 +319,68 @@ function App() {
     const camera = props.camera;
     const playing = () => isPlaying(camera.id);
 
+    // Handle start button click
+    const handleStart = () => {
+      if (tileVideoRef) {
+        console.log('[WebRTC] Starting for', camera.name, 'video element:', tileVideoRef);
+        startWebRTC(camera, tileVideoRef);
+      } else {
+        console.error('[WebRTC] No video element for', camera.name);
+      }
+    };
+
     return (
       <div class="camera-tile">
-        {/* Show MJPEG fallback if not using native player or player not started */}
+        {/* MJPEG fallback mode */}
         <Show when={!useNativePlayer()}>
           <img
             src={getMjpegUrl(camera.id)}
             alt={camera.name}
+            style="width: 100%; height: 100%; object-fit: cover;"
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = "none";
             }}
           />
         </Show>
 
-        {/* Native player placeholder when using GStreamer */}
+        {/* WebRTC inline video mode */}
         <Show when={useNativePlayer()}>
-          <div class="native-player-area">
+          <div class="native-player-area" style="position: relative; width: 100%; height: 100%;">
+            {/* Video element for WebRTC stream */}
+            <video
+              ref={(el) => tileVideoRef = el}
+              autoplay
+              playsinline
+              muted
+              style="width: 100%; height: 100%; object-fit: cover; background: #111;"
+            />
+
+            {/* Start button overlay when not playing */}
             <Show when={!playing()}>
-              <div class="player-prompt">
+              <div class="player-prompt" style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.7);">
                 <div class="camera-icon">📹</div>
                 <div class="camera-title">{camera.name}</div>
-                <div class="camera-resolution">
-                  {camera.resolution_width}x{camera.resolution_height} @ {camera.framerate}fps
-                </div>
                 <button
                   class="start-player-btn"
-                  onClick={() => startPlayer(camera)}
+                  onClick={handleStart}
                 >
-                  ▶️ Iniciar (30-80ms)
+                  ▶️ WebRTC (50-150ms)
                 </button>
               </div>
             </Show>
+
+            {/* Overlay when playing */}
             <Show when={playing()}>
-              <div class="player-running">
-                <div class="latency-badge">⚡ 30-80ms</div>
-                <div class="player-info">
-                  <span class="camera-name">{camera.name}</span>
-                  <span class="native-label">GStreamer Nativo</span>
+              <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 8px; background: linear-gradient(transparent, rgba(0,0,0,0.8));">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="color: #0f0; font-size: 12px;">⚡ WebRTC Live</span>
+                  <button
+                    style="background: #f44; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;"
+                    onClick={() => stopWebRTC(camera.id)}
+                  >
+                    ⏹️
+                  </button>
                 </div>
-                <button
-                  class="stop-player-btn"
-                  onClick={() => stopPlayer(camera.id)}
-                >
-                  ⏹️ Parar
-                </button>
               </div>
             </Show>
           </div>

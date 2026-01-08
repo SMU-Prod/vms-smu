@@ -112,13 +112,13 @@ fn main() -> Result<()> {
 fn create_ultra_low_latency_pipeline(args: &Args) -> Result<gst::Pipeline> {
     let pipeline = gst::Pipeline::new();
 
-    // RTSP Source - BALANCED LATENCY/QUALITY
-    // 100ms buffer prevents frame drops during motion while keeping latency low
+    // RTSP Source - ULTRA LOW LATENCY (50ms target)
     let rtspsrc = gst::ElementFactory::make("rtspsrc")
         .name("source")
         .property("location", &args.url)
-        .property("latency", 100u32)         // 100ms buffer for quality
-        .property("drop-on-latency", false)  // Don't drop frames - preserves motion
+        .property("latency", 50u32)          // 50ms buffer (ultra low)
+        .property("drop-on-latency", true)   // Drop late frames for speed
+        .property("buffer-mode", 0i32)       // No buffering
         .build()?;
 
     // Auth
@@ -199,17 +199,17 @@ fn create_ultra_low_latency_pipeline(args: &Args) -> Result<gst::Pipeline> {
         info!("📐 Using native camera resolution");
     }
 
-    // Video sink - D3D12 for best Windows quality, sync=true for quality
+    // Video sink - D3D12 for best Windows quality, sync=false for lowest latency
     let videosink = gst::ElementFactory::make("d3d12videosink")
         .name("sink")
-        .property("sync", true)  // Enable sync for smooth playback
+        .property("sync", false)  // Disable sync for ultra-low latency
         .property("fullscreen", args.fullscreen)
         .build()
         .unwrap_or_else(|_| {
             info!("D3D12 sink not available, using autovideosink");
             gst::ElementFactory::make("autovideosink")
                 .name("sink")
-                .property("sync", true)
+                .property("sync", false)  // Ultra-low latency
                 .build()
                 .expect("Failed to create video sink")
         });

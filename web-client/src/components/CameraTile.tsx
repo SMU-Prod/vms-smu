@@ -17,7 +17,7 @@ const CameraTile: Component<CameraTileProps> = (props) => {
 
     let peerConnection: RTCPeerConnection | null = null;
 
-    const VMS_STREAM_URL = 'http://localhost:9094';
+    const VMS_STREAM_URL = 'http://localhost:9095';
 
     const startWebRTC = async () => {
         try {
@@ -60,7 +60,7 @@ const CameraTile: Component<CameraTileProps> = (props) => {
             peerConnection.onicecandidate = async (event) => {
                 if (event.candidate) {
                     try {
-                        await fetch(`${VMS_STREAM_URL}/api/v1/webrtc/ice`, {
+                        await fetch(`${VMS_STREAM_URL}/api/v1/webrtc/ice/${props.id}`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -86,7 +86,7 @@ const CameraTile: Component<CameraTileProps> = (props) => {
             console.log(`[CameraTile ${props.id}] Sending SDP offer to vms-stream...`);
 
             // Send offer to vms-stream
-            const response = await fetch(`${VMS_STREAM_URL}/api/v1/webrtc/offer`, {
+            const response = await fetch(`${VMS_STREAM_URL}/api/v1/webrtc/offer/${props.id}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

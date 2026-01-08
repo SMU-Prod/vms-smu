@@ -2,6 +2,12 @@
 resolver = "2"
 exclude = ["apps/vms-admin/src-tauri", "apps/vms-viewer/src-tauri"]
 members = [
+    # New Architecture (v3.0)
+    "crates/vms_core",
+    "crates/vms_server",
+    "crates/vms_node",
+    
+    # Legacy services (to be refactored)
     "services/vms-ingest",
     "services/vms-storage",
     "services/vms-ai",
@@ -16,10 +22,13 @@ members = [
     "services/vms-lpr",
     "services/vms-face",
     "services/vms-onvif",
+    "services/vms-player",
+    
+    # Libraries
     "libs/vms-common",
     "libs/vms-proto",
     "libs/vms-format",
-    "libs/vms-telemetry", "services/vms-player",
+    "libs/vms-telemetry",
 ]
 
 [workspace.package]

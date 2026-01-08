@@ -1,0 +1,52 @@
+[package]
+name = "vms_node"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "vms-node"
+path = "src/main.rs"
+
+[dependencies]
+# Core types
+vms_core = { path = "../vms_core" }
+
+# Runtime
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+
+# Media Pipeline
+gstreamer = { workspace = true }
+gstreamer-app = { workspace = true }
+gstreamer-video = { workspace = true }
+
+# Web Framework
+axum = { workspace = true }
+hyper = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Types
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+# Errors
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Observability
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Utilities
+futures = { workspace = true }
+
+# HTTP Client
+reqwest = { version = "0.11", features = ["json"] }
+
+# Networking
+local-ip-address = "0.6"

@@ -68,7 +68,7 @@ pub async fn update_camera(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateCameraRequest>,
 ) -> impl IntoResponse {
-    match state.camera_repo.update(id, req.name, req.enabled).await {
+    match state.camera_repo.update(id, &req).await {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
