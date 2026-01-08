@@ -19,6 +19,7 @@
 //! - `stream`: Tipos de streaming
 //! - `types`: Tipos básicos compartilhados
 //! - `user`: Usuários e permissões
+//! - `webrtc`: WebRTC signaling types
 
 pub mod analytics;
 pub mod camera;
@@ -35,6 +36,7 @@ pub mod schedule;
 pub mod stream;
 pub mod types;
 pub mod user;
+pub mod webrtc;
 
 // Re-exports principais
 pub use error::{Error, Result};
@@ -50,3 +52,5 @@ pub use user::{User, UserId, Role, Permission, Group, Session, AuditLog};
 pub use analytics::{AnalyticsZone, AnalyticsRule, DetectedObject, ObjectClass, CountingLine};
 pub use lpr::{PlateRead, PlateList, ParkingZone, CameraLPRConfig};
 pub use map::{Map, MapObject, MapType, GeoCoordinates};
+pub use webrtc::{WebRtcOfferRequest, WebRtcAnswerResponse, IceCandidateRequest, ApiErrorBody};
+

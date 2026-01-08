@@ -108,11 +108,15 @@ async fn main() -> Result<()> {
         )
         .with_state(camera_store);
 
+    // WebRTC routes
+    let webrtc_routes = routes::webrtc::router();
+
     // API v1 routes
     let api_routes = Router::new()
         .nest("/auth", auth_routes)
         .nest("/users", user_routes)
         .nest("/cameras", camera_routes)
+        .nest("/webrtc", webrtc_routes)
         .merge(legacy_routes)
         .route("/mjpeg/:camera_id", get(routes::mjpeg::mjpeg_stream))
         .with_state(state.clone());

@@ -6,6 +6,7 @@ pub mod streams;
 pub mod recordings;
 pub mod mjpeg;
 pub mod auth;
+pub mod webrtc;
 // pub mod onvif; // Temporarily disabled
 
 use axum::{http::StatusCode, Json};
