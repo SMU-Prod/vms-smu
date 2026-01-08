@@ -17,11 +17,13 @@ mod routes;
 
 use db::camera_repository::CameraRepository;
 use db::user_repository::UserRepository;
+use db::server_repository::ServerRepository;
 
 #[derive(Clone)]
 pub struct AppState {
     pub camera_repo: Arc<CameraRepository>,
     pub user_repo: Arc<UserRepository>,
+    pub server_repo: Arc<ServerRepository>,
 }
 
 #[tokio::main]
@@ -50,11 +52,15 @@ async fn main() -> Result<()> {
     let user_repo = UserRepository::new(pool.clone());
     user_repo.create_table().await?;
 
+    let server_repo = ServerRepository::new(pool.clone());
+    server_repo.create_table().await?;
+
     info!("✅ Database tables created");
 
     let state = AppState {
         camera_repo: Arc::new(camera_repo),
         user_repo: Arc::new(user_repo),
+        server_repo: Arc::new(server_repo),
     };
 
     // Auth routes
@@ -111,11 +117,26 @@ async fn main() -> Result<()> {
     // WebRTC routes
     let webrtc_routes = routes::webrtc::router();
 
+    // Server routes
+    let server_routes = Router::new()
+        .route(
+            "/",
+            get(routes::servers::list_servers).post(routes::servers::create_server),
+        )
+        .route(
+            "/:id",
+            get(routes::servers::get_server)
+                .put(routes::servers::update_server)
+                .delete(routes::servers::delete_server),
+        )
+        .with_state(state.clone());
+
     // API v1 routes
     let api_routes = Router::new()
         .nest("/auth", auth_routes)
         .nest("/users", user_routes)
         .nest("/cameras", camera_routes)
+        .nest("/servers", server_routes)
         .nest("/webrtc", webrtc_routes)
         .merge(legacy_routes)
         .route("/mjpeg/:camera_id", get(routes::mjpeg::mjpeg_stream))
