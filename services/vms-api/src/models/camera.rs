@@ -98,6 +98,7 @@ pub struct Camera {
     // === Gravação ===
     pub recording_mode: RecordingMode,
     pub recording_dir: Option<String>,
+    pub audio_enabled: bool,
     pub retention_days: u32,
     
     // === Localização ===
@@ -142,6 +143,8 @@ pub struct CreateCameraRequest {
     #[serde(default)]
     pub recording_mode: RecordingMode,
     pub recording_dir: Option<String>,
+    #[serde(default)]
+    pub audio_enabled: bool,
     #[serde(default = "default_retention")]
     pub retention_days: u32,
     
@@ -179,6 +182,7 @@ pub struct UpdateCameraRequest {
     
     pub recording_mode: Option<RecordingMode>,
     pub recording_dir: Option<Option<String>>,
+    pub audio_enabled: Option<bool>,
     pub retention_days: Option<u32>,
     
     pub shortcut: Option<Option<String>>,

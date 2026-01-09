@@ -45,6 +45,36 @@ interface Props {
     onRefresh: () => void;
 }
 
+// Camera manufacturer/model/firmware data for cascading dropdowns
+const CAMERA_DATA: Record<string, Record<string, string[]>> = {
+    "Hikvision": {
+        "DS-2CD2085FWD-I": ["V5.5.6", "V5.5.7", "V5.6.0"],
+        "DS-2CD2145FWD-IS": ["V5.5.6", "V5.6.0"],
+        "DS-2CD2385FWD-I": ["V5.5.7", "V5.6.1"],
+    },
+    "Dahua": {
+        "DH-IPC-HDW4431C-A": ["V2.800", "V2.830"],
+        "DH-IPC-HFW4431EP-SE": ["V2.800", "V2.820"],
+    },
+    "Intelbras": {
+        "VIP 1230 D G4": ["V1.0.0", "V1.0.1"],
+        "VIP 3260 Z G2": ["V2.0.0", "V2.1.0"],
+        "VIP 1020 B G4": ["V1.0.0"],
+    },
+    "TP-Link": {
+        "Tapo C100": ["V1.0", "V1.1", "V1.2"],
+        "Tapo C200": ["V1.0", "V1.1"],
+        "Tapo C310": ["V1.0", "V2.0"],
+    },
+    "Outro": {
+        "Genérico RTSP": ["N/A"],
+        "ONVIF Compatível": ["N/A"],
+    },
+};
+
+const getModels = (manufacturer: string) => Object.keys(CAMERA_DATA[manufacturer] || {});
+const getFirmwares = (manufacturer: string, model: string) => CAMERA_DATA[manufacturer]?.[model] || [];
+
 // Digifort-style 3-column layout
 export function CamerasPageDigifort(props: Props) {
     // Navigation state
@@ -161,6 +191,64 @@ export function CamerasPageDigifort(props: Props) {
         const parts = folderPath().split("\\").filter(Boolean);
         if (parts.length > 1) {
             loadDirectory(parts.slice(0, -1).join("\\") + "\\");
+        }
+    };
+
+    // Save camera to backend
+    const handleSaveCamera = async (e: Event) => {
+        e.preventDefault();
+
+        const cameraData = {
+            name: formName(),
+            description: formDesc() || null,
+            manufacturer: formManufacturer() || null,
+            model: formModel() || null,
+            firmware: formFirmware() || null,
+            enabled: formEnabled(),
+            ip_address: formIp(),
+            rtsp_port: parseInt(formPort()) || 554,
+            username: formUser(),
+            password: formPass() || undefined, // Don't send empty password on edit
+            transport: formTransport(),
+            timeout_ms: parseInt(formTimeout()) || 30000,
+            recording_dir: formRecDir() || null,
+            audio_enabled: formAudioEnabled(),
+            shortcut: formShortcut() || null,
+            latitude: parseFloat(formLat()) || 0,
+            longitude: parseFloat(formLng()) || 0,
+        };
+
+        try {
+            const isEdit = !!editingCamera();
+            const url = isEdit
+                ? `${props.API_URL}/cameras/${editingCamera()!.id}`
+                : `${props.API_URL}/cameras`;
+
+            // For edit, only send password if it was changed (not empty)
+            const bodyData = isEdit && !formPass()
+                ? { ...cameraData, password: undefined }
+                : cameraData;
+
+            const res = await fetch(url, {
+                method: isEdit ? "PUT" : "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${localStorage.getItem("token")}`
+                },
+                body: JSON.stringify(bodyData)
+            });
+
+            if (res.ok) {
+                setShowCameraModal(false);
+                props.onRefresh();
+            } else {
+                const err = await res.text();
+                console.error("Erro ao salvar câmera:", err);
+                alert("Erro ao salvar câmera: " + err);
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Erro de conexão");
         }
     };
 
@@ -441,7 +529,7 @@ export function CamerasPageDigifort(props: Props) {
                                 <button class="modal-close" onClick={() => setShowCameraModal(false)}>×</button>
                             </div>
 
-                            <form>
+                            <form onSubmit={handleSaveCamera}>
                                 {/* Nome e Descrição */}
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
                                     <div class="form-group">
@@ -469,11 +557,21 @@ export function CamerasPageDigifort(props: Props) {
                                     </div>
                                     <div class="form-group">
                                         <label style="font-weight: 500;">Modelo</label>
-                                        <input type="text" value={formModel()} onInput={(e) => setFormModel(e.currentTarget.value)} style="width: 100%; padding: 10px;" />
+                                        <select value={formModel()} onChange={(e) => setFormModel(e.currentTarget.value)} style="width: 100%; padding: 10px;">
+                                            <option value="">Selecione</option>
+                                            <For each={getModels(formManufacturer())}>
+                                                {(model) => <option value={model}>{model}</option>}
+                                            </For>
+                                        </select>
                                     </div>
                                     <div class="form-group">
                                         <label style="font-weight: 500;">Firmware</label>
-                                        <input type="text" value={formFirmware()} onInput={(e) => setFormFirmware(e.currentTarget.value)} style="width: 100%; padding: 10px;" />
+                                        <select value={formFirmware()} onChange={(e) => setFormFirmware(e.currentTarget.value)} style="width: 100%; padding: 10px;">
+                                            <option value="">Selecione</option>
+                                            <For each={getFirmwares(formManufacturer(), formModel())}>
+                                                {(fw) => <option value={fw}>{fw}</option>}
+                                            </For>
+                                        </select>
                                     </div>
                                 </div>
 
