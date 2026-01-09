@@ -20,10 +20,22 @@ interface Camera {
     name: string;
     description?: string;
     ip_address?: string;
+    rtsp_port?: number;
+    username?: string;
+    password?: string;
+    transport?: string;
     manufacturer?: string;
+    model?: string;
+    firmware?: string;
     enabled: boolean;
+    audio_enabled?: boolean;
     server_id?: string;
     folder_id?: string;
+    shortcut?: string;
+    latitude?: number;
+    longitude?: number;
+    recording_dir?: string;
+    timeout_ms?: number;
 }
 
 interface Props {
@@ -52,6 +64,105 @@ export function CamerasPageDigifort(props: Props) {
     const [showCameraModal, setShowCameraModal] = createSignal(false);
     const [editingCamera, setEditingCamera] = createSignal<Camera | null>(null);
     const [selectedCamera, setSelectedCamera] = createSignal<Camera | null>(null);
+
+    // Form state
+    const [formName, setFormName] = createSignal("");
+    const [formDesc, setFormDesc] = createSignal("");
+    const [formIp, setFormIp] = createSignal("");
+    const [formPort, setFormPort] = createSignal("554");
+    const [formUser, setFormUser] = createSignal("");
+    const [formPass, setFormPass] = createSignal("");
+    const [formTransport, setFormTransport] = createSignal("auto");
+    const [formManufacturer, setFormManufacturer] = createSignal("");
+    const [formModel, setFormModel] = createSignal("");
+    const [formFirmware, setFormFirmware] = createSignal("");
+    const [formShortcut, setFormShortcut] = createSignal("");
+    const [formLat, setFormLat] = createSignal("0.000000");
+    const [formLng, setFormLng] = createSignal("0.000000");
+    const [formRecDir, setFormRecDir] = createSignal("");
+    const [formTimeout, setFormTimeout] = createSignal("30000");
+    const [formEnabled, setFormEnabled] = createSignal(false);
+    const [formAudioEnabled, setFormAudioEnabled] = createSignal(false);
+
+    // Folder picker for recording directory
+    const [showFolderPicker, setShowFolderPicker] = createSignal(false);
+    const [folderPath, setFolderPath] = createSignal("C:\\");
+    const [folderEntries, setFolderEntries] = createSignal<{ name: string; path: string }[]>([]);
+    const [folderDrives, setFolderDrives] = createSignal<string[]>([]);
+    const [newRecFolderName, setNewRecFolderName] = createSignal("");
+
+    // Load form when editing camera
+    const openCameraForm = (camera: Camera | null) => {
+        if (camera) {
+            setFormName(camera.name || "");
+            setFormDesc(camera.description || "");
+            setFormIp(camera.ip_address || "");
+            setFormPort(String(camera.rtsp_port || 554));
+            setFormUser(camera.username || "");
+            setFormPass(camera.password || "");
+            setFormTransport(camera.transport || "auto");
+            setFormManufacturer(camera.manufacturer || "");
+            setFormModel(camera.model || "");
+            setFormFirmware(camera.firmware || "");
+            setFormShortcut(camera.shortcut || "");
+            setFormLat(String(camera.latitude || 0));
+            setFormLng(String(camera.longitude || 0));
+            setFormRecDir(camera.recording_dir || "");
+            setFormTimeout(String(camera.timeout_ms || 30000));
+            setFormEnabled(camera.enabled || false);
+            setFormAudioEnabled(camera.audio_enabled || false);
+        } else {
+            // Reset for new camera
+            setFormName(""); setFormDesc(""); setFormIp(""); setFormPort("554");
+            setFormUser(""); setFormPass(""); setFormTransport("auto");
+            setFormManufacturer(""); setFormModel(""); setFormFirmware("");
+            setFormShortcut(""); setFormLat("0.000000"); setFormLng("0.000000");
+            setFormRecDir(""); setFormTimeout("30000");
+            setFormEnabled(false); setFormAudioEnabled(false);
+        }
+        setEditingCamera(camera);
+        setShowCameraModal(true);
+    };
+
+    // Folder picker functions
+    const loadDirectory = async (path: string) => {
+        try {
+            const res = await fetch(`${props.API_URL}/filesystem/list?path=${encodeURIComponent(path)}`, {
+                headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setFolderPath(data.current_path);
+                setFolderEntries(data.entries || []);
+                setFolderDrives(data.drives || []);
+            }
+        } catch (e) { console.error(e); }
+    };
+
+    const createRecFolder = async () => {
+        if (!newRecFolderName()) return;
+        try {
+            const res = await fetch(`${props.API_URL}/filesystem/create`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${localStorage.getItem("token")}`
+                },
+                body: JSON.stringify({ path: folderPath(), name: newRecFolderName() })
+            });
+            if (res.ok) {
+                setNewRecFolderName("");
+                loadDirectory(folderPath());
+            }
+        } catch (e) { console.error(e); }
+    };
+
+    const goParentFolder = () => {
+        const parts = folderPath().split("\\").filter(Boolean);
+        if (parts.length > 1) {
+            loadDirectory(parts.slice(0, -1).join("\\") + "\\");
+        }
+    };
 
     // Toggle server expansion
     const toggleServer = (serverId: string) => {
@@ -252,7 +363,7 @@ export function CamerasPageDigifort(props: Props) {
                                                 <tr
                                                     style={`cursor: pointer; ${selectedCamera()?.id === camera.id ? 'background: var(--accent-color); color: white;' : ''}`}
                                                     onClick={() => setSelectedCamera(camera)}
-                                                    onDblClick={() => { setEditingCamera(camera); setShowCameraModal(true); }}
+                                                    onDblClick={() => openCameraForm(camera)}
                                                 >
                                                     <td>
                                                         <span style="display: flex; align-items: center; gap: 8px;">
@@ -335,11 +446,11 @@ export function CamerasPageDigifort(props: Props) {
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
                                     <div class="form-group">
                                         <label style="font-weight: 500;">Nome da Câmera *</label>
-                                        <input type="text" value={editingCamera()?.name || ''} style="width: 100%; padding: 10px;" />
+                                        <input type="text" value={formName()} onInput={(e) => setFormName(e.currentTarget.value)} style="width: 100%; padding: 10px;" />
                                     </div>
                                     <div class="form-group">
                                         <label style="font-weight: 500;">Descrição</label>
-                                        <input type="text" value={editingCamera()?.description || ''} style="width: 100%; padding: 10px;" />
+                                        <input type="text" value={formDesc()} onInput={(e) => setFormDesc(e.currentTarget.value)} style="width: 100%; padding: 10px;" />
                                     </div>
                                 </div>
 
@@ -347,25 +458,22 @@ export function CamerasPageDigifort(props: Props) {
                                 <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px;">
                                     <div class="form-group">
                                         <label style="font-weight: 500;">Fabricante</label>
-                                        <select style="width: 100%; padding: 10px;">
-                                            <option>Selecione</option>
+                                        <select value={formManufacturer()} onChange={(e) => setFormManufacturer(e.currentTarget.value)} style="width: 100%; padding: 10px;">
+                                            <option value="">Selecione</option>
                                             <option>Hikvision</option>
                                             <option>Dahua</option>
                                             <option>Intelbras</option>
                                             <option>TP-Link</option>
+                                            <option>Outro</option>
                                         </select>
                                     </div>
                                     <div class="form-group">
                                         <label style="font-weight: 500;">Modelo</label>
-                                        <select style="width: 100%; padding: 10px;">
-                                            <option>Selecione</option>
-                                        </select>
+                                        <input type="text" value={formModel()} onInput={(e) => setFormModel(e.currentTarget.value)} style="width: 100%; padding: 10px;" />
                                     </div>
                                     <div class="form-group">
                                         <label style="font-weight: 500;">Firmware</label>
-                                        <select style="width: 100%; padding: 10px;">
-                                            <option>Selecione</option>
-                                        </select>
+                                        <input type="text" value={formFirmware()} onInput={(e) => setFormFirmware(e.currentTarget.value)} style="width: 100%; padding: 10px;" />
                                     </div>
                                 </div>
 
@@ -375,25 +483,25 @@ export function CamerasPageDigifort(props: Props) {
                                     <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-bottom: 12px;">
                                         <div class="form-group">
                                             <label>Endereço IP *</label>
-                                            <input type="text" value={editingCamera()?.ip_address || ''} style="width: 100%; padding: 10px;" />
+                                            <input type="text" value={formIp()} onInput={(e) => setFormIp(e.currentTarget.value)} style="width: 100%; padding: 10px;" />
                                         </div>
                                         <div class="form-group">
                                             <label>Porta RTSP</label>
-                                            <input type="number" value="554" style="width: 100%; padding: 10px;" />
+                                            <input type="number" value={formPort()} onInput={(e) => setFormPort(e.currentTarget.value)} style="width: 100%; padding: 10px;" />
                                         </div>
                                     </div>
                                     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
                                         <div class="form-group">
                                             <label>Usuário *</label>
-                                            <input type="text" style="width: 100%; padding: 10px;" />
+                                            <input type="text" value={formUser()} onInput={(e) => setFormUser(e.currentTarget.value)} style="width: 100%; padding: 10px;" />
                                         </div>
                                         <div class="form-group">
                                             <label>Senha *</label>
-                                            <input type="password" style="width: 100%; padding: 10px;" />
+                                            <input type="password" value={formPass()} onInput={(e) => setFormPass(e.currentTarget.value)} style="width: 100%; padding: 10px;" />
                                         </div>
                                         <div class="form-group">
                                             <label>Transporte</label>
-                                            <select style="width: 100%; padding: 10px;">
+                                            <select value={formTransport()} onChange={(e) => setFormTransport(e.currentTarget.value)} style="width: 100%; padding: 10px;">
                                                 <option value="auto">Auto</option>
                                                 <option value="tcp">TCP</option>
                                                 <option value="udp">UDP</option>
@@ -406,15 +514,15 @@ export function CamerasPageDigifort(props: Props) {
                                 <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; margin-bottom: 16px;">
                                     <div class="form-group">
                                         <label>Atalho no Cliente</label>
-                                        <input type="text" style="width: 100%; padding: 10px;" />
+                                        <input type="text" value={formShortcut()} onInput={(e) => setFormShortcut(e.currentTarget.value)} style="width: 100%; padding: 10px;" />
                                     </div>
                                     <div class="form-group">
                                         <label>Latitude</label>
-                                        <input type="text" value="0.000000" style="width: 100%; padding: 10px;" />
+                                        <input type="text" value={formLat()} onInput={(e) => setFormLat(e.currentTarget.value)} style="width: 100%; padding: 10px;" />
                                     </div>
                                     <div class="form-group">
                                         <label>Longitude</label>
-                                        <input type="text" value="0.000000" style="width: 100%; padding: 10px;" />
+                                        <input type="text" value={formLng()} onInput={(e) => setFormLng(e.currentTarget.value)} style="width: 100%; padding: 10px;" />
                                     </div>
                                 </div>
 
@@ -423,27 +531,33 @@ export function CamerasPageDigifort(props: Props) {
                                     <div class="form-group">
                                         <label>Diretório de Gravação</label>
                                         <div style="display: flex; gap: 8px;">
-                                            <input type="text" style="flex: 1; padding: 10px;" />
-                                            <button type="button" class="btn btn-secondary" style="padding: 10px;">📁</button>
+                                            <input type="text" value={formRecDir()} onInput={(e) => setFormRecDir(e.currentTarget.value)} style="flex: 1; padding: 10px;" />
+                                            <button type="button" class="btn btn-secondary" style="padding: 10px;" onClick={() => { loadDirectory(formRecDir() || "C:\\"); setShowFolderPicker(true); }}>📁</button>
                                         </div>
                                     </div>
                                     <div class="form-group">
                                         <label>Timeout (ms)</label>
-                                        <input type="number" value="30000" style="width: 100%; padding: 10px;" />
+                                        <input type="number" value={formTimeout()} onInput={(e) => setFormTimeout(e.currentTarget.value)} style="width: 100%; padding: 10px;" />
                                     </div>
                                 </div>
 
                                 {/* Observações */}
                                 <div class="form-group" style="margin-bottom: 16px;">
                                     <label>Observações Gerais</label>
-                                    <textarea rows="3" style="width: 100%; padding: 10px; resize: vertical;"></textarea>
+                                    <textarea rows="2" style="width: 100%; padding: 10px; resize: vertical;"></textarea>
                                 </div>
 
-                                {/* Ativar Câmera */}
-                                <div style="padding: 12px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 20px;">
+                                {/* Ativar Câmera e Áudio */}
+                                <div style="padding: 12px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 20px; display: flex; flex-direction: column; gap: 12px;">
                                     <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                                        <input type="checkbox" checked={editingCamera()?.enabled || false} style="width: 18px; height: 18px;" />
-                                        <span style="font-weight: 500;">✅ Ativar Câmera</span>
+                                        <input type="checkbox" checked={formEnabled()} onChange={(e) => setFormEnabled(e.currentTarget.checked)} style="width: 18px; height: 18px;" />
+                                        <span style="font-weight: 500;">Ativar Câmera</span>
+                                        <span style="font-size: 12px; color: var(--text-muted);">(habilita streaming e gravação)</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                        <input type="checkbox" checked={formAudioEnabled()} onChange={(e) => setFormAudioEnabled(e.currentTarget.checked)} style="width: 18px; height: 18px;" />
+                                        <span style="font-weight: 500;">Habilitar Áudio</span>
+                                        <span style="font-size: 12px; color: var(--text-muted);">(grava MP4 com áudio)</span>
                                     </label>
                                 </div>
 
@@ -453,6 +567,65 @@ export function CamerasPageDigifort(props: Props) {
                                     <button type="submit" class="btn btn-primary">OK</button>
                                 </div>
                             </form>
+                        </div>
+                    </div>
+                </div>
+            </Show>
+
+            {/* Folder Picker Modal */}
+            <Show when={showFolderPicker()}>
+                <div class="modal-overlay" onClick={() => setShowFolderPicker(false)}>
+                    <div class="modal-content" onClick={(e) => e.stopPropagation()} style="max-width: 550px;">
+                        <div class="modal-header">
+                            <h3>📁 Selecionar Diretório de Gravação</h3>
+                            <button class="modal-close" onClick={() => setShowFolderPicker(false)}>×</button>
+                        </div>
+
+                        <div style="padding: 12px; background: var(--bg-secondary); border-radius: 6px; font-family: monospace; margin-bottom: 12px;">
+                            {folderPath()}
+                        </div>
+
+                        <div style="display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap;">
+                            <For each={folderDrives()}>
+                                {(drive) => (
+                                    <button
+                                        class={`btn ${folderPath().startsWith(drive) ? "btn-primary" : "btn-secondary"}`}
+                                        style="padding: 6px 12px; font-size: 12px;"
+                                        onClick={() => loadDirectory(drive)}
+                                    >
+                                        💾 {drive}
+                                    </button>
+                                )}
+                            </For>
+                        </div>
+
+                        <button class="btn btn-secondary" onClick={goParentFolder} style="margin-bottom: 12px;">⬆️ Voltar</button>
+
+                        <div style="max-height: 250px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 12px;">
+                            <For each={folderEntries()}>
+                                {(entry) => (
+                                    <div style="padding: 10px; cursor: pointer; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px;"
+                                        onClick={() => loadDirectory(entry.path)}
+                                        onMouseOver={(e) => (e.currentTarget.style.background = 'var(--bg-secondary)')}
+                                        onMouseOut={(e) => (e.currentTarget.style.background = '')}
+                                    >
+                                        📁 {entry.name}
+                                    </div>
+                                )}
+                            </For>
+                            <Show when={folderEntries().length === 0}>
+                                <div style="padding: 20px; text-align: center; color: var(--text-muted);">Nenhuma pasta</div>
+                            </Show>
+                        </div>
+
+                        <div style="display: flex; gap: 6px; margin-bottom: 16px;">
+                            <input type="text" value={newRecFolderName()} onInput={(e) => setNewRecFolderName(e.currentTarget.value)} placeholder="Nova pasta" style="flex: 1; padding: 8px;" />
+                            <button class="btn btn-secondary" onClick={createRecFolder}>➕ Criar</button>
+                        </div>
+
+                        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                            <button class="btn btn-secondary" onClick={() => setShowFolderPicker(false)}>Cancelar</button>
+                            <button class="btn btn-primary" onClick={() => { setFormRecDir(folderPath()); setShowFolderPicker(false); }}>Selecionar</button>
                         </div>
                     </div>
                 </div>
