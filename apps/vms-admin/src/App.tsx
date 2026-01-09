@@ -1276,6 +1276,37 @@ function App() {
     const [serverUser, setServerUser] = createSignal("");
     const [serverPass, setServerPass] = createSignal("");
 
+    // Server health status tracking
+    const [serverStatuses, setServerStatuses] = createSignal<Record<string, string>>({});
+
+    // Check health for all servers
+    const checkAllServersHealth = async () => {
+      const statuses: Record<string, string> = {};
+      for (const s of servers()) {
+        try {
+          const res = await fetch(`${API_URL}/servers/${s.id}/health`);
+          if (res.ok) {
+            const data = await res.json();
+            statuses[s.id] = data.online ? "online" : "offline";
+          } else {
+            statuses[s.id] = "offline";
+          }
+        } catch {
+          statuses[s.id] = "offline";
+        }
+      }
+      setServerStatuses(statuses);
+    };
+
+    // Check health on mount and periodically
+    createEffect(() => {
+      if (servers().length > 0) {
+        checkAllServersHealth();
+        const interval = setInterval(checkAllServersHealth, 30000); // Check every 30s
+        return () => clearInterval(interval);
+      }
+    });
+
     const handleCreate = (e: Event) => {
       e.preventDefault();
       const editing = editingServer();
@@ -1336,8 +1367,8 @@ function App() {
                     <td>{s.port}</td>
                     <td>{s.username}</td>
                     <td>
-                      <span class={`status status-${s.status}`}>
-                        {s.status}
+                      <span class={`status status-${serverStatuses()[s.id] || s.status}`}>
+                        {serverStatuses()[s.id] || s.status}
                       </span>
                     </td>
                     <td style="font-family: monospace; font-size: 11px">{s.webrtc_url}</td>
