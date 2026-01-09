@@ -73,6 +73,11 @@ impl CameraRepository {
         .execute(&self.pool)
         .await?;
 
+        // Migration: add audio_enabled column if it doesn't exist (for existing databases)
+        let _ = sqlx::query("ALTER TABLE cameras ADD COLUMN audio_enabled BOOLEAN NOT NULL DEFAULT 0")
+            .execute(&self.pool)
+            .await; // Ignore error if column already exists
+
         Ok(())
     }
 
