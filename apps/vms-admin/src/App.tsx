@@ -246,6 +246,8 @@ function App() {
     longitude?: number;
     // Vinculação
     server_id?: string;
+    // Status
+    enabled?: boolean;
   }
 
   async function createCamera(data: CameraFormData) {
@@ -517,6 +519,70 @@ function App() {
 
   // Cameras Page - Professional VMS
   function CamerasPage() {
+    // Manufacturer/Model/Firmware data
+    const CAMERA_DATA: Record<string, { models: Record<string, string[]> }> = {
+      "Hikvision": {
+        models: {
+          "DS-2CD2143G2": ["V5.6.0", "V5.5.9", "V5.5.8"],
+          "DS-2CD2043G2": ["V5.6.0", "V5.5.9"],
+          "DS-2CD2183G2": ["V5.6.0", "V5.5.8"],
+          "Outro": ["Verificar manual"]
+        }
+      },
+      "Dahua": {
+        models: {
+          "IPC-HDW2431T": ["V2.820", "V2.810", "V2.800"],
+          "IPC-HFW2431S": ["V2.820", "V2.810"],
+          "IPC-HDW5442T": ["V2.820", "V2.800"],
+          "Outro": ["Verificar manual"]
+        }
+      },
+      "Intelbras": {
+        models: {
+          "VIP 3230 D": ["V100R001", "V100R000"],
+          "VIP 1130 B": ["V100R001", "V100R000"],
+          "VIP 5450 Z": ["V100R001"],
+          "Outro": ["Verificar manual"]
+        }
+      },
+      "Axis": {
+        models: {
+          "P3245-V": ["10.12.208", "10.12.200"],
+          "M3115-LVE": ["10.12.208", "10.12.200"],
+          "Outro": ["Verificar manual"]
+        }
+      },
+      "TP-Link": {
+        models: {
+          "Tapo C100": ["1.3.0", "1.2.3", "1.2.0"],
+          "Tapo C200": ["1.3.0", "1.2.3"],
+          "Tapo C310": ["1.3.0", "1.2.0"],
+          "Outro": ["Verificar manual"]
+        }
+      },
+      "Outro": {
+        models: {
+          "Genérico": ["N/A"]
+        }
+      }
+    };
+
+    // Get models for current manufacturer
+    const getModels = () => {
+      const mfr = camManufacturer();
+      return mfr && CAMERA_DATA[mfr] ? Object.keys(CAMERA_DATA[mfr].models) : [];
+    };
+
+    // Get firmwares for current model
+    const getFirmwares = () => {
+      const mfr = camManufacturer();
+      const mdl = camModel();
+      if (mfr && mdl && CAMERA_DATA[mfr]?.models[mdl]) {
+        return CAMERA_DATA[mfr].models[mdl];
+      }
+      return [];
+    };
+
     // Tab state
     const [activeTab, setActiveTab] = createSignal("camera");
 
@@ -676,6 +742,14 @@ function App() {
                     <td>{camera.server_id ? "Vinculada" : "Sem servidor"}</td>
                     <td style="display: flex; gap: 8px;">
                       <button
+                        class={`btn ${camera.enabled ? "btn-success" : "btn-secondary"}`}
+                        style="padding: 6px 12px"
+                        title={camera.enabled ? "Desabilitar câmera" : "Habilitar câmera"}
+                        onClick={() => updateCamera(camera.id, { enabled: !camera.enabled })}
+                      >
+                        {camera.enabled ? "🟢" : "⚪"}
+                      </button>
+                      <button
                         class="btn btn-secondary"
                         style="padding: 6px 12px"
                         onClick={() => {
@@ -687,6 +761,7 @@ function App() {
                           setCamIp(camera.ip_address || "");
                           setCamRtspPort(String(camera.rtsp_port || 554));
                           setCamUser(camera.username || "");
+                          setCamPass(camera.password || "");
                           setCamTransport(camera.transport || "auto");
                           setCamRecMode(camera.recording_mode || "disabled");
                           setCamServerId(camera.server_id || "");
@@ -737,33 +812,34 @@ function App() {
                   <Show when={activeTab() === "camera"}>
                     <div class="form-group">
                       <label>Nome da Câmera *</label>
-                      <input type="text" value={camName()} onInput={(e) => setCamName(e.currentTarget.value)} placeholder="Entrada Principal" required />
+                      <input type="text" value={camName()} onInput={(e) => setCamName(e.currentTarget.value)} required style="width: 100%;" />
                     </div>
                     <div class="form-group">
                       <label>Descrição</label>
-                      <textarea value={camDesc()} onInput={(e) => setCamDesc(e.currentTarget.value)} placeholder="Observações gerais sobre a câmera" rows={3} style="width: 100%; resize: vertical;" />
+                      <textarea value={camDesc()} onInput={(e) => setCamDesc(e.currentTarget.value)} rows={3} style="width: 100%; resize: vertical;" />
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
                       <div class="form-group">
                         <label>Fabricante</label>
-                        <select value={camManufacturer()} onChange={(e) => setCamManufacturer(e.currentTarget.value)}>
-                          <option value="">Selecione...</option>
-                          <option value="Hikvision">Hikvision</option>
-                          <option value="Dahua">Dahua</option>
-                          <option value="Intelbras">Intelbras</option>
-                          <option value="Axis">Axis</option>
-                          <option value="TP-Link">TP-Link (Tapo)</option>
-                          <option value="Outro">Outro</option>
+                        <select value={camManufacturer()} onChange={(e) => { setCamManufacturer(e.currentTarget.value); setCamModel(""); setCamFirmware(""); }} style="width: 100%;">
+                          <option value="">Selecione</option>
+                          <For each={Object.keys(CAMERA_DATA)}>{(mfr) => <option value={mfr}>{mfr}</option>}</For>
                         </select>
                       </div>
                       <div class="form-group">
                         <label>Modelo</label>
-                        <input type="text" value={camModel()} onInput={(e) => setCamModel(e.currentTarget.value)} placeholder="Ex: DS-2CD2143G2" />
+                        <select value={camModel()} onChange={(e) => { setCamModel(e.currentTarget.value); setCamFirmware(""); }} disabled={!camManufacturer()} style="width: 100%;">
+                          <option value="">Selecione</option>
+                          <For each={getModels()}>{(mdl) => <option value={mdl}>{mdl}</option>}</For>
+                        </select>
                       </div>
-                    </div>
-                    <div class="form-group">
-                      <label>Firmware</label>
-                      <input type="text" value={camFirmware()} onInput={(e) => setCamFirmware(e.currentTarget.value)} placeholder="Ex: V5.6.0" />
+                      <div class="form-group">
+                        <label>Firmware</label>
+                        <select value={camFirmware()} onChange={(e) => setCamFirmware(e.currentTarget.value)} disabled={!camModel()} style="width: 100%;">
+                          <option value="">Selecione</option>
+                          <For each={getFirmwares()}>{(fw) => <option value={fw}>{fw}</option>}</For>
+                        </select>
+                      </div>
                     </div>
                   </Show>
 
@@ -772,31 +848,31 @@ function App() {
                     <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px;">
                       <div class="form-group">
                         <label>Endereço IP *</label>
-                        <input type="text" value={camIp()} onInput={(e) => setCamIp(e.currentTarget.value)} placeholder="192.168.1.100" required />
+                        <input type="text" value={camIp()} onInput={(e) => setCamIp(e.currentTarget.value)} required style="width: 100%;" />
                       </div>
                       <div class="form-group">
                         <label>Porta RTSP</label>
-                        <input type="number" value={camRtspPort()} onInput={(e) => setCamRtspPort(e.currentTarget.value)} placeholder="554" />
+                        <input type="number" value={camRtspPort()} onInput={(e) => setCamRtspPort(e.currentTarget.value)} style="width: 100%;" />
                       </div>
                     </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                       <div class="form-group">
                         <label>Usuário *</label>
-                        <input type="text" value={camUser()} onInput={(e) => setCamUser(e.currentTarget.value)} placeholder="admin" required />
+                        <input type="text" value={camUser()} onInput={(e) => setCamUser(e.currentTarget.value)} required style="width: 100%;" />
                       </div>
                       <div class="form-group">
                         <label>Senha *</label>
-                        <input type="password" value={camPass()} onInput={(e) => setCamPass(e.currentTarget.value)} placeholder="••••••" required />
+                        <input type="password" value={camPass()} onInput={(e) => setCamPass(e.currentTarget.value)} required style="width: 100%;" />
                       </div>
                     </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
                       <div class="form-group">
                         <label>Porta ONVIF</label>
-                        <input type="number" value={camOnvifPort()} onInput={(e) => setCamOnvifPort(e.currentTarget.value)} placeholder="80" />
+                        <input type="number" value={camOnvifPort()} onInput={(e) => setCamOnvifPort(e.currentTarget.value)} style="width: 100%;" />
                       </div>
                       <div class="form-group">
                         <label>Transporte</label>
-                        <select value={camTransport()} onChange={(e) => setCamTransport(e.currentTarget.value)}>
+                        <select value={camTransport()} onChange={(e) => setCamTransport(e.currentTarget.value)} style="width: 100%;">
                           <option value="auto">Auto</option>
                           <option value="tcp">TCP</option>
                           <option value="udp">UDP</option>
@@ -804,7 +880,7 @@ function App() {
                       </div>
                       <div class="form-group">
                         <label>Timeout (ms)</label>
-                        <input type="number" value={camTimeout()} onInput={(e) => setCamTimeout(e.currentTarget.value)} placeholder="30000" />
+                        <input type="number" value={camTimeout()} onInput={(e) => setCamTimeout(e.currentTarget.value)} style="width: 100%;" />
                       </div>
                     </div>
 
@@ -909,7 +985,7 @@ function App() {
               </div>
             </div>
           </div>
-        </Show>
+        </Show >
       </>
     );
   }
