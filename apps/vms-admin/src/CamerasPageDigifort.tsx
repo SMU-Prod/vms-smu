@@ -114,6 +114,14 @@ export function CamerasPageDigifort(props: Props) {
     const [formEnabled, setFormEnabled] = createSignal(false);
     const [formAudioEnabled, setFormAudioEnabled] = createSignal(false);
 
+    // Streaming configuration
+    const [formCodec, setFormCodec] = createSignal("h264");
+    const [formStreamType, setFormStreamType] = createSignal("main");
+
+    // Preview modal
+    const [showPreviewModal, setShowPreviewModal] = createSignal(false);
+    const [previewCameraId, setPreviewCameraId] = createSignal<string | null>(null);
+
     // Folder picker for recording directory
     const [showFolderPicker, setShowFolderPicker] = createSignal(false);
     const [folderPath, setFolderPath] = createSignal("C:\\");
@@ -141,6 +149,8 @@ export function CamerasPageDigifort(props: Props) {
             setFormTimeout(String(camera.timeout_ms || 30000));
             setFormEnabled(camera.enabled || false);
             setFormAudioEnabled(camera.audio_enabled || false);
+            setFormCodec((camera as any).codec || "h264");
+            setFormStreamType((camera as any).stream_type || "main");
         } else {
             // Reset for new camera
             setFormName(""); setFormDesc(""); setFormIp(""); setFormPort("554");
@@ -149,9 +159,16 @@ export function CamerasPageDigifort(props: Props) {
             setFormShortcut(""); setFormLat("0.000000"); setFormLng("0.000000");
             setFormRecDir(""); setFormTimeout("30000");
             setFormEnabled(false); setFormAudioEnabled(false);
+            setFormCodec("h264"); setFormStreamType("main");
         }
         setEditingCamera(camera);
         setShowCameraModal(true);
+    };
+
+    // Open preview modal for camera
+    const openPreview = (camera: Camera) => {
+        setPreviewCameraId(camera.id);
+        setShowPreviewModal(true);
     };
 
     // Folder picker functions
@@ -645,6 +662,42 @@ export function CamerasPageDigifort(props: Props) {
                                     <textarea rows="2" style="width: 100%; padding: 10px; resize: vertical;"></textarea>
                                 </div>
 
+                                {/* Streaming Configuration */}
+                                <div style="background: var(--bg-secondary); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                                    <h4 style="margin: 0 0 12px 0; font-size: 14px; color: var(--accent-color);">🎥 Configurações de Streaming</h4>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                                        <div class="form-group">
+                                            <label>Compressão de Vídeo</label>
+                                            <select value={formCodec()} onChange={(e) => setFormCodec(e.currentTarget.value)} style="width: 100%; padding: 10px;">
+                                                <option value="h264">H.264 (AVC)</option>
+                                                <option value="h265">H.265 (HEVC)</option>
+                                                <option value="mjpeg">MJPEG</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Stream</label>
+                                            <select value={formStreamType()} onChange={(e) => setFormStreamType(e.currentTarget.value)} style="width: 100%; padding: 10px;">
+                                                <option value="main">Stream Principal (4K)</option>
+                                                <option value="sub">Stream Secundário</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group" style="display: flex; align-items: flex-end;">
+                                            <button
+                                                type="button"
+                                                class="btn btn-secondary"
+                                                style="width: 100%; padding: 10px; display: flex; align-items: center; justify-content: center; gap: 8px;"
+                                                onClick={() => editingCamera() && openPreview(editingCamera()!)}
+                                                disabled={!editingCamera()}
+                                            >
+                                                👁️ Preview
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div style="padding: 10px; background: var(--bg-tertiary); border-radius: 6px; font-size: 12px; color: var(--text-muted);">
+                                        <strong>Informações do Stream:</strong> Resolução até 4K • Latência alvo: 80ms • Codec: {formCodec().toUpperCase()}
+                                    </div>
+                                </div>
+
                                 {/* Ativar Câmera e Áudio */}
                                 <div style="padding: 12px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 20px; display: flex; flex-direction: column; gap: 12px;">
                                     <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
@@ -724,6 +777,55 @@ export function CamerasPageDigifort(props: Props) {
                         <div style="display: flex; justify-content: flex-end; gap: 8px;">
                             <button class="btn btn-secondary" onClick={() => setShowFolderPicker(false)}>Cancelar</button>
                             <button class="btn btn-primary" onClick={() => { setFormRecDir(folderPath()); setShowFolderPicker(false); }}>Selecionar</button>
+                        </div>
+                    </div>
+                </div>
+            </Show>
+
+            {/* Preview Modal - MJPEG Live Stream */}
+            <Show when={showPreviewModal() && previewCameraId()}>
+                <div class="modal-overlay" onClick={() => setShowPreviewModal(false)} style="z-index: 2000;">
+                    <div class="modal-content" onClick={(e) => e.stopPropagation()} style="max-width: 900px; background: #000; padding: 0;">
+                        <div class="modal-header" style="background: var(--bg-primary); padding: 12px 16px;">
+                            <h3 style="margin: 0; display: flex; align-items: center; gap: 8px;">
+                                📹 Preview - {editingCamera()?.name || 'Câmera'}
+                            </h3>
+                            <button class="modal-close" onClick={() => setShowPreviewModal(false)} style="font-size: 24px;">×</button>
+                        </div>
+
+                        <div style="position: relative; background: #000; min-height: 480px; display: flex; align-items: center; justify-content: center;">
+                            {/* MJPEG Stream Image */}
+                            <img
+                                src={`${props.API_URL}/mjpeg/${previewCameraId()}`}
+                                alt="Camera Preview"
+                                style="max-width: 100%; max-height: 70vh; object-fit: contain;"
+                                onError={(e) => {
+                                    (e.target as HTMLImageElement).style.display = 'none';
+                                }}
+                            />
+
+                            {/* Camera Info Overlay */}
+                            <div style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 8px 12px; border-radius: 6px; font-size: 11px; color: #fff; font-family: monospace;">
+                                <div>IP: {editingCamera()?.ip_address}:{editingCamera()?.rtsp_port}</div>
+                                <div>Codec: {formCodec().toUpperCase()} | Stream: {formStreamType() === 'main' ? 'Principal' : 'Secundário'}</div>
+                                <div>Resolução: 4K | Latência: &lt;80ms</div>
+                            </div>
+
+                            {/* Recording indicator */}
+                            <Show when={formEnabled()}>
+                                <div style="position: absolute; top: 10px; right: 10px; background: rgba(255,0,0,0.8); padding: 6px 10px; border-radius: 4px; font-size: 11px; color: #fff; display: flex; align-items: center; gap: 6px;">
+                                    <span style="width: 8px; height: 8px; background: #fff; border-radius: 50%; animation: pulse 1s infinite;"></span>
+                                    REC
+                                </div>
+                            </Show>
+                        </div>
+
+                        <div style="background: var(--bg-primary); padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
+                            <div style="font-size: 12px; color: var(--text-muted);">
+                                Áudio: {formAudioEnabled() ? '🔊 Ativado' : '🔇 Desativado'} |
+                                Status: {formEnabled() ? '✅ Ativo' : '⏸️ Pausado'}
+                            </div>
+                            <button class="btn btn-primary" onClick={() => setShowPreviewModal(false)}>Fechar</button>
                         </div>
                     </div>
                 </div>
