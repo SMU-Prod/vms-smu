@@ -320,6 +320,72 @@ function App() {
     }
   }
 
+  // Update functions
+  async function updateCamera(id: string, data: Partial<CameraFormData>) {
+    try {
+      const res = await fetch(`${API_URL}/cameras/${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token()}`,
+        },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        loadCameras();
+        setEditingCamera(null);
+        setShowCameraModal(false);
+      }
+    } catch (e) {
+      console.error("Failed to update camera:", e);
+    }
+  }
+
+  async function updateUser(id: string, data: { name?: string; role?: string; enabled?: boolean }) {
+    try {
+      const res = await fetch(`${API_URL}/users/${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token()}`,
+        },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        loadUsers();
+        setEditingUser(null);
+        setShowUserModal(false);
+      }
+    } catch (e) {
+      console.error("Failed to update user:", e);
+    }
+  }
+
+  async function updateServer(id: string, data: { name?: string; ip?: string; port?: number; username?: string; password?: string }) {
+    try {
+      const res = await fetch(`${API_URL}/servers/${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token()}`,
+        },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        loadServers();
+        setEditingServer(null);
+        setShowServerModal(false);
+      }
+    } catch (e) {
+      console.error("Failed to update server:", e);
+    }
+  }
+
+  // Editing states
+  const [editingCamera, setEditingCamera] = createSignal<any>(null);
+  const [editingUser, setEditingUser] = createSignal<any>(null);
+  const [editingServer, setEditingServer] = createSignal<any>(null);
+
   // Login Screen
   function LoginScreen() {
     const [username, setUsername] = createSignal("");
@@ -536,7 +602,8 @@ function App() {
 
     const handleCreate = (e: Event) => {
       e.preventDefault();
-      createCamera({
+      const editing = editingCamera();
+      const data = {
         name: camName(),
         description: camDesc() || undefined,
         manufacturer: camManufacturer() || undefined,
@@ -556,8 +623,14 @@ function App() {
         latitude: camLat() ? parseFloat(camLat()) : undefined,
         longitude: camLng() ? parseFloat(camLng()) : undefined,
         server_id: camServerId() || undefined,
-      });
+      };
+      if (editing) {
+        updateCamera(editing.id, data);
+      } else {
+        createCamera(data);
+      }
       resetForm();
+      setEditingCamera(null);
     };
 
     const tabs = [
@@ -601,7 +674,27 @@ function App() {
                       </span>
                     </td>
                     <td>{camera.server_id ? "Vinculada" : "Sem servidor"}</td>
-                    <td>
+                    <td style="display: flex; gap: 8px;">
+                      <button
+                        class="btn btn-secondary"
+                        style="padding: 6px 12px"
+                        onClick={() => {
+                          setEditingCamera(camera);
+                          setCamName(camera.name || "");
+                          setCamDesc(camera.description || "");
+                          setCamManufacturer(camera.manufacturer || "");
+                          setCamModel(camera.model || "");
+                          setCamIp(camera.ip_address || "");
+                          setCamRtspPort(String(camera.rtsp_port || 554));
+                          setCamUser(camera.username || "");
+                          setCamTransport(camera.transport || "auto");
+                          setCamRecMode(camera.recording_mode || "disabled");
+                          setCamServerId(camera.server_id || "");
+                          setShowCameraModal(true);
+                        }}
+                      >
+                        ✏️
+                      </button>
                       <button class="btn btn-danger" style="padding: 6px 12px" onClick={() => deleteCamera(camera.id)}>
                         🗑️
                       </button>
@@ -830,16 +923,27 @@ function App() {
 
     const handleCreate = (e: Event) => {
       e.preventDefault();
-      createUser({
-        name: userName(),
-        username: userUsername(),
-        password: userPassword(),
-        role: userRole(),
-      });
+      const editing = editingUser();
+      if (editing) {
+        // Update mode
+        updateUser(editing.id, {
+          name: userName(),
+          role: userRole(),
+        });
+      } else {
+        // Create mode
+        createUser({
+          name: userName(),
+          username: userUsername(),
+          password: userPassword(),
+          role: userRole(),
+        });
+      }
       setUserName("");
       setUserUsername("");
       setUserPassword("");
       setUserRole("viewer");
+      setEditingUser(null);
     };
 
     return (
@@ -873,7 +977,14 @@ function App() {
                         {u.enabled ? "Ativo" : "Inativo"}
                       </span>
                     </td>
-                    <td>
+                    <td style="display: flex; gap: 8px;">
+                      <button
+                        class="btn btn-secondary"
+                        style="padding: 6px 12px"
+                        onClick={() => { setEditingUser(u); setUserName(u.name); setUserUsername(u.username); setUserRole(u.role); setShowUserModal(true); }}
+                      >
+                        ✏️
+                      </button>
                       <button
                         class="btn btn-danger"
                         style="padding: 6px 12px"
@@ -941,18 +1052,32 @@ function App() {
 
     const handleCreate = (e: Event) => {
       e.preventDefault();
-      createServer({
-        name: serverName(),
-        ip: serverIp(),
-        port: parseInt(serverPort()) || 9094,
-        username: serverUser(),
-        password: serverPass(),
-      });
+      const editing = editingServer();
+      if (editing) {
+        // Update mode
+        updateServer(editing.id, {
+          name: serverName(),
+          ip: serverIp(),
+          port: parseInt(serverPort()) || 9094,
+          username: serverUser() || undefined,
+          password: serverPass() || undefined,
+        });
+      } else {
+        // Create mode
+        createServer({
+          name: serverName(),
+          ip: serverIp(),
+          port: parseInt(serverPort()) || 9094,
+          username: serverUser(),
+          password: serverPass(),
+        });
+      }
       setServerName("");
       setServerIp("");
       setServerPort("9094");
       setServerUser("");
       setServerPass("");
+      setEditingServer(null);
     };
 
     return (
@@ -990,7 +1115,14 @@ function App() {
                       </span>
                     </td>
                     <td style="font-family: monospace; font-size: 11px">{s.webrtc_url}</td>
-                    <td>
+                    <td style="display: flex; gap: 8px;">
+                      <button
+                        class="btn btn-secondary"
+                        style="padding: 6px 12px"
+                        onClick={() => { setEditingServer(s); setServerName(s.name); setServerIp(s.ip); setServerPort(String(s.port)); setServerUser(s.username || ""); setShowServerModal(true); }}
+                      >
+                        ✏️
+                      </button>
                       <button
                         class="btn btn-danger"
                         style="padding: 6px 12px"
