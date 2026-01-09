@@ -81,7 +81,6 @@ pub struct Camera {
     pub rtsp_port: u16,
     pub onvif_port: Option<u16>,
     pub username: String,
-    #[serde(skip_serializing)]
     pub password: String,
     pub rtsp_url: String,
     pub onvif_url: Option<String>,
