@@ -119,9 +119,6 @@ export function CamerasPageDigifort(props: Props) {
     const [formCodec, setFormCodec] = createSignal("h264");
     const [formStreamType, setFormStreamType] = createSignal("main");
 
-    // Preview modal
-    const [showPreviewModal, setShowPreviewModal] = createSignal(false);
-    const [previewCameraId, setPreviewCameraId] = createSignal<string | null>(null);
 
     // Folder picker for recording directory
     const [showFolderPicker, setShowFolderPicker] = createSignal(false);
@@ -166,11 +163,6 @@ export function CamerasPageDigifort(props: Props) {
         setShowCameraModal(true);
     };
 
-    // Open preview modal for camera
-    const openPreview = (camera: Camera) => {
-        setPreviewCameraId(camera.id);
-        setShowPreviewModal(true);
-    };
 
     // Folder picker functions
     const loadDirectory = async (path: string) => {
@@ -682,17 +674,7 @@ export function CamerasPageDigifort(props: Props) {
                                                 <option value="sub">Stream Secundário</option>
                                             </select>
                                         </div>
-                                        <div class="form-group" style="display: flex; align-items: flex-end;">
-                                            <button
-                                                type="button"
-                                                class="btn btn-secondary"
-                                                style="width: 100%; padding: 10px; display: flex; align-items: center; justify-content: center; gap: 8px;"
-                                                onClick={() => editingCamera() && openPreview(editingCamera()!)}
-                                                disabled={!editingCamera()}
-                                            >
-                                                👁️ Preview
-                                            </button>
-                                        </div>
+
                                     </div>
                                     <div style="padding: 10px; background: var(--bg-tertiary); border-radius: 6px; font-size: 12px; color: var(--text-muted);">
                                         <strong>Informações do Stream:</strong> Resolução até 4K • Latência alvo: 80ms • Codec: {formCodec().toUpperCase()}
@@ -806,54 +788,7 @@ export function CamerasPageDigifort(props: Props) {
                 </div>
             </Show>
 
-            {/* Preview Modal - MJPEG Live Stream */}
-            <Show when={showPreviewModal() && previewCameraId()}>
-                <div class="modal-overlay" onClick={() => setShowPreviewModal(false)} style="z-index: 2000;">
-                    <div class="modal-content" onClick={(e) => e.stopPropagation()} style="max-width: 900px; background: #000; padding: 0;">
-                        <div class="modal-header" style="background: var(--bg-primary); padding: 12px 16px;">
-                            <h3 style="margin: 0; display: flex; align-items: center; gap: 8px;">
-                                📹 Preview - {editingCamera()?.name || 'Câmera'}
-                            </h3>
-                            <button class="modal-close" onClick={() => setShowPreviewModal(false)} style="font-size: 24px;">×</button>
-                        </div>
-
-                        <div style="position: relative; background: #000; min-height: 480px; display: flex; align-items: center; justify-content: center;">
-                            {/* MJPEG Stream Image */}
-                            <img
-                                src={`${props.API_URL}/mjpeg/${previewCameraId()}`}
-                                alt="Camera Preview"
-                                style="max-width: 100%; max-height: 70vh; object-fit: contain;"
-                                onError={(e) => {
-                                    (e.target as HTMLImageElement).style.display = 'none';
-                                }}
-                            />
-
-                            {/* Camera Info Overlay */}
-                            <div style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 8px 12px; border-radius: 6px; font-size: 11px; color: #fff; font-family: monospace;">
-                                <div>IP: {editingCamera()?.ip_address}:{editingCamera()?.rtsp_port}</div>
-                                <div>Codec: {formCodec().toUpperCase()} | Stream: {formStreamType() === 'main' ? 'Principal' : 'Secundário'}</div>
-                                <div>Resolução: 4K | Latência: &lt;80ms</div>
-                            </div>
-
-                            {/* Recording indicator */}
-                            <Show when={formEnabled()}>
-                                <div style="position: absolute; top: 10px; right: 10px; background: rgba(255,0,0,0.8); padding: 6px 10px; border-radius: 4px; font-size: 11px; color: #fff; display: flex; align-items: center; gap: 6px;">
-                                    <span style="width: 8px; height: 8px; background: #fff; border-radius: 50%; animation: pulse 1s infinite;"></span>
-                                    REC
-                                </div>
-                            </Show>
-                        </div>
-
-                        <div style="background: var(--bg-primary); padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
-                            <div style="font-size: 12px; color: var(--text-muted);">
-                                Áudio: {formAudioEnabled() ? '🔊 Ativado' : '🔇 Desativado'} |
-                                Status: {formEnabled() ? '✅ Ativo' : '⏸️ Pausado'}
-                            </div>
-                            <button class="btn btn-primary" onClick={() => setShowPreviewModal(false)}>Fechar</button>
-                        </div>
-                    </div>
-                </div>
-            </Show>
+            {/* Preview removido - usar botão Visualizar (GStreamer) */}
         </>
     );
 }
