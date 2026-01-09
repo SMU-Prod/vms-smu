@@ -201,50 +201,122 @@ fn create_ultra_low_latency_pipeline(args: &Args) -> Result<gst::Pipeline> {
 
     // Video sink - D3D12 for best Windows quality, sync=true for quality
     let videosink = gst::ElementFactory::make("d3d12videosink")
-        .name("sink")
+        .name("videosink")
         .property("sync", true)  // Enable sync for smooth playback
         .property("fullscreen", args.fullscreen)
         .build()
         .unwrap_or_else(|_| {
             info!("D3D12 sink not available, using autovideosink");
             gst::ElementFactory::make("autovideosink")
-                .name("sink")
+                .name("videosink")
                 .property("sync", true)
                 .build()
                 .expect("Failed to create video sink")
         });
 
-    // Pipeline: RTSP -> Depay -> Parse -> Decode -> Convert -> Balance -> Scale -> Caps -> Sink
-    // Balance reduces brightness by 12% for natural colors
+    // AUDIO PIPELINE - with buffering to prevent dropouts
+    let audio_decodebin = gst::ElementFactory::make("decodebin")
+        .name("audio_decodebin")
+        .build()?;
+    
+    // Audio queue - CRITICAL for preventing dropouts
+    // 500ms buffer absorbs network jitter without adding noticeable latency
+    let audio_queue = gst::ElementFactory::make("queue")
+        .name("audio_queue")
+        .property("max-size-time", 500_000_000u64)  // 500ms buffer
+        .property("max-size-buffers", 0u32)         // Unlimited buffers
+        .property("max-size-bytes", 0u32)           // Unlimited bytes
+        .build()?;
+    
+    let audio_convert = gst::ElementFactory::make("audioconvert")
+        .name("audio_convert")
+        .build()?;
+    
+    let audio_resample = gst::ElementFactory::make("audioresample")
+        .name("audio_resample")
+        .property("quality", 10i32)  // Highest quality resampling
+        .build()?;
+    
+    // Audio sink with buffer
+    let audio_sink = gst::ElementFactory::make("autoaudiosink")
+        .name("audiosink")
+        .property("sync", true)
+        .property("buffer-time", 100_000i64)  // 100ms output buffer
+        .property("latency-time", 20_000i64)  // 20ms latency
+        .build()?;
+
+    // Add video pipeline
     pipeline.add_many(&[
         &depay, &parse, &decode, &convert, &balance, &scale, &capsfilter, &videosink
     ])?;
 
+    // Add audio pipeline with queue buffer
+    pipeline.add_many(&[
+        &audio_decodebin, &audio_queue, &audio_convert, &audio_resample, &audio_sink
+    ])?;
+
+    // Link video pipeline
     gst::Element::link_many(&[
         &depay, &parse, &decode, &convert, &balance, &scale, &capsfilter, &videosink
     ])?;
 
-    // Connect dynamic pads
-    let depay_clone = depay.clone();
-    rtspsrc.connect_pad_added(move |_src, src_pad| {
-        let sink_pad = depay_clone
-            .static_pad("sink")
-            .expect("Failed to get sink pad");
+    // Link audio output chain: queue -> convert -> resample -> sink
+    gst::Element::link_many(&[
+        &audio_queue, &audio_convert, &audio_resample, &audio_sink
+    ])?;
 
+    // Connect decodebin pad-added for audio -> connect to queue for buffering
+    let audio_queue_clone = audio_queue.clone();
+    audio_decodebin.connect_pad_added(move |_element, pad| {
+        let sink_pad = audio_queue_clone
+            .static_pad("sink")
+            .expect("audio queue has no sink pad");
+        
         if sink_pad.is_linked() {
             return;
         }
+        
+        if let Err(e) = pad.link(&sink_pad) {
+            error!("Failed to link audio decodebin: {}", e);
+        } else {
+            info!("🔊 Audio pipeline linked with buffer");
+        }
+    });
 
+    // Connect RTSP source dynamic pads
+    let depay_clone = depay.clone();
+    let audio_decodebin_clone = audio_decodebin.clone();
+    rtspsrc.connect_pad_added(move |_src, src_pad| {
         if let Some(caps) = src_pad.current_caps() {
             if let Some(structure) = caps.structure(0) {
                 if structure.name().starts_with("application/x-rtp") {
                     if let Ok(media) = structure.get::<&str>("media") {
-                        if media == "video" {
-                            if let Err(e) = src_pad.link(&sink_pad) {
-                                error!("Failed to link: {}", e);
-                            } else {
-                                info!("✅ Video stream linked");
+                        match media {
+                            "video" => {
+                                let sink_pad = depay_clone
+                                    .static_pad("sink")
+                                    .expect("Failed to get video sink pad");
+                                if !sink_pad.is_linked() {
+                                    if let Err(e) = src_pad.link(&sink_pad) {
+                                        error!("Failed to link video: {}", e);
+                                    } else {
+                                        info!("✅ Video stream linked");
+                                    }
+                                }
                             }
+                            "audio" => {
+                                let sink_pad = audio_decodebin_clone
+                                    .static_pad("sink")
+                                    .expect("Failed to get audio sink pad");
+                                if !sink_pad.is_linked() {
+                                    if let Err(e) = src_pad.link(&sink_pad) {
+                                        error!("Failed to link audio: {}", e);
+                                    } else {
+                                        info!("🔊 Audio stream linked");
+                                    }
+                                }
+                            }
+                            _ => {}
                         }
                     }
                 }
@@ -253,9 +325,6 @@ fn create_ultra_low_latency_pipeline(args: &Args) -> Result<gst::Pipeline> {
     });
 
     pipeline.add(&rtspsrc)?;
-
-    // Don't force zero latency - let GStreamer manage for quality
-    // pipeline.set_latency(gst::ClockTime::from_mseconds(0));
 
     Ok(pipeline)
 }

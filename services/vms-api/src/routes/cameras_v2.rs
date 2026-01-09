@@ -109,6 +109,7 @@ pub async fn update_camera(
         timeout_ms: req.timeout_ms.unwrap_or(existing.timeout_ms),
         recording_mode: req.recording_mode.unwrap_or(existing.recording_mode),
         recording_dir: req.recording_dir.unwrap_or(existing.recording_dir),
+        audio_enabled: req.audio_enabled.unwrap_or(existing.audio_enabled),
         retention_days: req.retention_days.unwrap_or(existing.retention_days),
         shortcut: req.shortcut.unwrap_or(existing.shortcut),
         latitude: req.latitude.unwrap_or(existing.latitude),
