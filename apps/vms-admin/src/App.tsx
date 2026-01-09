@@ -220,8 +220,35 @@ function App() {
     }
   }
 
-  // Camera CRUD
-  async function createCamera(data: { name: string; rtsp_url: string; username: string; password: string }) {
+  // Camera CRUD - Professional VMS
+  interface CameraFormData {
+    // Geral
+    name: string;
+    description?: string;
+    manufacturer?: string;
+    model?: string;
+    firmware?: string;
+    // Streaming
+    ip_address: string;
+    rtsp_port: number;
+    onvif_port?: number;
+    username: string;
+    password: string;
+    transport: string;
+    timeout_ms: number;
+    // Gravação
+    recording_mode: string;
+    recording_dir?: string;
+    retention_days: number;
+    // Localização
+    shortcut?: string;
+    latitude?: number;
+    longitude?: number;
+    // Vinculação
+    server_id?: string;
+  }
+
+  async function createCamera(data: CameraFormData) {
     try {
       const res = await fetch(`${API_URL}/cameras`, {
         method: "POST",
@@ -229,18 +256,14 @@ function App() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token()}`,
         },
-        body: JSON.stringify({
-          ...data,
-          resolution_width: 1920,
-          resolution_height: 1080,
-          framerate: 30,
-          codec: "H264",
-          enabled: true,
-        }),
+        body: JSON.stringify(data),
       });
       if (res.ok) {
         loadCameras();
         setShowCameraModal(false);
+      } else {
+        const err = await res.json();
+        console.error("Camera creation failed:", err);
       }
     } catch (e) {
       console.error("Failed to create camera:", e);
@@ -426,26 +449,82 @@ function App() {
     );
   }
 
-  // Cameras Page
+  // Cameras Page - Professional VMS
   function CamerasPage() {
+    // Tab state
+    const [activeTab, setActiveTab] = createSignal("camera");
+
+    // Form fields - Geral
     const [camName, setCamName] = createSignal("");
-    const [camRtsp, setCamRtsp] = createSignal("");
+    const [camDesc, setCamDesc] = createSignal("");
+    const [camManufacturer, setCamManufacturer] = createSignal("");
+    const [camModel, setCamModel] = createSignal("");
+    const [camFirmware, setCamFirmware] = createSignal("");
+
+    // Streaming
+    const [camIp, setCamIp] = createSignal("");
+    const [camRtspPort, setCamRtspPort] = createSignal("554");
+    const [camOnvifPort, setCamOnvifPort] = createSignal("80");
     const [camUser, setCamUser] = createSignal("");
     const [camPass, setCamPass] = createSignal("");
+    const [camTransport, setCamTransport] = createSignal("auto");
+    const [camTimeout, setCamTimeout] = createSignal("30000");
+
+    // Gravação
+    const [camRecMode, setCamRecMode] = createSignal("disabled");
+    const [camRecDir, setCamRecDir] = createSignal("");
+    const [camRetention, setCamRetention] = createSignal("30");
+
+    // Localização
+    const [camShortcut, setCamShortcut] = createSignal("");
+    const [camLat, setCamLat] = createSignal("");
+    const [camLng, setCamLng] = createSignal("");
+
+    // Vinculação
+    const [camServerId, setCamServerId] = createSignal("");
+
+    const resetForm = () => {
+      setCamName(""); setCamDesc(""); setCamManufacturer(""); setCamModel("");
+      setCamFirmware(""); setCamIp(""); setCamRtspPort("554"); setCamOnvifPort("80");
+      setCamUser(""); setCamPass(""); setCamTransport("auto"); setCamTimeout("30000");
+      setCamRecMode("disabled"); setCamRecDir(""); setCamRetention("30");
+      setCamShortcut(""); setCamLat(""); setCamLng(""); setCamServerId("");
+      setActiveTab("camera");
+    };
 
     const handleCreate = (e: Event) => {
       e.preventDefault();
       createCamera({
         name: camName(),
-        rtsp_url: camRtsp(),
+        description: camDesc() || undefined,
+        manufacturer: camManufacturer() || undefined,
+        model: camModel() || undefined,
+        firmware: camFirmware() || undefined,
+        ip_address: camIp(),
+        rtsp_port: parseInt(camRtspPort()) || 554,
+        onvif_port: camOnvifPort() ? parseInt(camOnvifPort()) : undefined,
         username: camUser(),
         password: camPass(),
+        transport: camTransport(),
+        timeout_ms: parseInt(camTimeout()) || 30000,
+        recording_mode: camRecMode(),
+        recording_dir: camRecDir() || undefined,
+        retention_days: parseInt(camRetention()) || 30,
+        shortcut: camShortcut() || undefined,
+        latitude: camLat() ? parseFloat(camLat()) : undefined,
+        longitude: camLng() ? parseFloat(camLng()) : undefined,
+        server_id: camServerId() || undefined,
       });
-      setCamName("");
-      setCamRtsp("");
-      setCamUser("");
-      setCamPass("");
+      resetForm();
     };
+
+    const tabs = [
+      { id: "camera", label: "📹 Câmera", icon: "📹" },
+      { id: "streaming", label: "🎥 Streaming", icon: "🎥" },
+      { id: "recording", label: "💾 Gravação", icon: "💾" },
+      { id: "location", label: "🗺️ Localização", icon: "🗺️" },
+      { id: "server", label: "🔗 Servidor", icon: "🔗" },
+    ];
 
     return (
       <>
@@ -460,24 +539,26 @@ function App() {
             <thead>
               <tr>
                 <th>Nome</th>
-                <th>RTSP URL</th>
-                <th>Resolução</th>
+                <th>IP</th>
+                <th>Fabricante</th>
                 <th>Status</th>
+                <th>Servidor</th>
                 <th>Ações</th>
               </tr>
             </thead>
             <tbody>
               <For each={cameras()}>
-                {(camera) => (
+                {(camera: any) => (
                   <tr>
                     <td>{camera.name}</td>
-                    <td style="font-family: monospace; font-size: 12px">{camera.rtsp_url}</td>
-                    <td>{camera.resolution_width}x{camera.resolution_height}</td>
+                    <td style="font-family: monospace">{camera.ip_address || camera.rtsp_url?.split("@")[1]?.split(":")[0] || "-"}</td>
+                    <td>{camera.manufacturer || "-"}</td>
                     <td>
                       <span class={`status ${camera.enabled ? "status-online" : "status-offline"}`}>
-                        {camera.enabled ? "Online" : "Offline"}
+                        {camera.enabled ? "Ativa" : "Inativa"}
                       </span>
                     </td>
+                    <td>{camera.server_id ? "Vinculada" : "Sem servidor"}</td>
                     <td>
                       <button class="btn btn-danger" style="padding: 6px 12px" onClick={() => deleteCamera(camera.id)}>
                         🗑️
@@ -490,36 +571,172 @@ function App() {
           </table>
         </div>
 
-        {/* Camera Modal */}
+        {/* Camera Modal - Professional Tabs */}
         <Show when={showCameraModal()}>
-          <div class="modal-overlay" onClick={() => setShowCameraModal(false)}>
-            <div class="modal-content" onClick={(e) => e.stopPropagation()}>
-              <div class="modal-header">
-                <h2>Nova Câmera</h2>
-                <button class="modal-close" onClick={() => setShowCameraModal(false)}>×</button>
+          <div class="modal-overlay" onClick={() => { setShowCameraModal(false); resetForm(); }}>
+            <div class="modal-content modal-large" onClick={(e) => e.stopPropagation()} style="max-width: 800px; display: flex; flex-direction: row; padding: 0;">
+              {/* Sidebar Tabs */}
+              <div style="width: 180px; background: var(--bg-secondary); border-right: 1px solid var(--border); padding: 16px 0;">
+                <h3 style="padding: 0 16px; margin-bottom: 16px; font-size: 14px; color: var(--text-muted);">Configurações</h3>
+                <For each={tabs}>
+                  {(tab) => (
+                    <div
+                      onClick={() => setActiveTab(tab.id)}
+                      style={`padding: 12px 16px; cursor: pointer; transition: all 0.2s; ${activeTab() === tab.id ? "background: var(--accent-color); color: white;" : ""}`}
+                    >
+                      {tab.label}
+                    </div>
+                  )}
+                </For>
               </div>
-              <form onSubmit={handleCreate}>
-                <div class="form-group">
-                  <label>Nome</label>
-                  <input type="text" value={camName()} onInput={(e) => setCamName(e.currentTarget.value)} placeholder="Câmera Entrada" required />
+
+              {/* Form Content */}
+              <div style="flex: 1; padding: 24px;">
+                <div class="modal-header" style="margin-bottom: 20px;">
+                  <h2>Nova Câmera</h2>
+                  <button class="modal-close" onClick={() => { setShowCameraModal(false); resetForm(); }}>×</button>
                 </div>
-                <div class="form-group">
-                  <label>URL RTSP</label>
-                  <input type="text" value={camRtsp()} onInput={(e) => setCamRtsp(e.currentTarget.value)} placeholder="rtsp://192.168.1.100:554/stream" required />
-                </div>
-                <div class="form-group">
-                  <label>Usuário</label>
-                  <input type="text" value={camUser()} onInput={(e) => setCamUser(e.currentTarget.value)} placeholder="admin" required />
-                </div>
-                <div class="form-group">
-                  <label>Senha</label>
-                  <input type="password" value={camPass()} onInput={(e) => setCamPass(e.currentTarget.value)} placeholder="••••••" required />
-                </div>
-                <div class="modal-footer">
-                  <button type="button" class="btn btn-secondary" onClick={() => setShowCameraModal(false)}>Cancelar</button>
-                  <button type="submit" class="btn btn-primary">Criar Câmera</button>
-                </div>
-              </form>
+
+                <form onSubmit={handleCreate}>
+                  {/* Tab: Camera */}
+                  <Show when={activeTab() === "camera"}>
+                    <div class="form-group">
+                      <label>Nome da Câmera *</label>
+                      <input type="text" value={camName()} onInput={(e) => setCamName(e.currentTarget.value)} placeholder="Entrada Principal" required />
+                    </div>
+                    <div class="form-group">
+                      <label>Descrição</label>
+                      <textarea value={camDesc()} onInput={(e) => setCamDesc(e.currentTarget.value)} placeholder="Observações gerais sobre a câmera" rows={3} style="width: 100%; resize: vertical;" />
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                      <div class="form-group">
+                        <label>Fabricante</label>
+                        <select value={camManufacturer()} onChange={(e) => setCamManufacturer(e.currentTarget.value)}>
+                          <option value="">Selecione...</option>
+                          <option value="Hikvision">Hikvision</option>
+                          <option value="Dahua">Dahua</option>
+                          <option value="Intelbras">Intelbras</option>
+                          <option value="Axis">Axis</option>
+                          <option value="TP-Link">TP-Link (Tapo)</option>
+                          <option value="Outro">Outro</option>
+                        </select>
+                      </div>
+                      <div class="form-group">
+                        <label>Modelo</label>
+                        <input type="text" value={camModel()} onInput={(e) => setCamModel(e.currentTarget.value)} placeholder="Ex: DS-2CD2143G2" />
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <label>Firmware</label>
+                      <input type="text" value={camFirmware()} onInput={(e) => setCamFirmware(e.currentTarget.value)} placeholder="Ex: V5.6.0" />
+                    </div>
+                  </Show>
+
+                  {/* Tab: Streaming */}
+                  <Show when={activeTab() === "streaming"}>
+                    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px;">
+                      <div class="form-group">
+                        <label>Endereço IP *</label>
+                        <input type="text" value={camIp()} onInput={(e) => setCamIp(e.currentTarget.value)} placeholder="192.168.1.100" required />
+                      </div>
+                      <div class="form-group">
+                        <label>Porta RTSP</label>
+                        <input type="number" value={camRtspPort()} onInput={(e) => setCamRtspPort(e.currentTarget.value)} placeholder="554" />
+                      </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                      <div class="form-group">
+                        <label>Usuário *</label>
+                        <input type="text" value={camUser()} onInput={(e) => setCamUser(e.currentTarget.value)} placeholder="admin" required />
+                      </div>
+                      <div class="form-group">
+                        <label>Senha *</label>
+                        <input type="password" value={camPass()} onInput={(e) => setCamPass(e.currentTarget.value)} placeholder="••••••" required />
+                      </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+                      <div class="form-group">
+                        <label>Porta ONVIF</label>
+                        <input type="number" value={camOnvifPort()} onInput={(e) => setCamOnvifPort(e.currentTarget.value)} placeholder="80" />
+                      </div>
+                      <div class="form-group">
+                        <label>Transporte</label>
+                        <select value={camTransport()} onChange={(e) => setCamTransport(e.currentTarget.value)}>
+                          <option value="auto">Auto</option>
+                          <option value="tcp">TCP</option>
+                          <option value="udp">UDP</option>
+                        </select>
+                      </div>
+                      <div class="form-group">
+                        <label>Timeout (ms)</label>
+                        <input type="number" value={camTimeout()} onInput={(e) => setCamTimeout(e.currentTarget.value)} placeholder="30000" />
+                      </div>
+                    </div>
+                  </Show>
+
+                  {/* Tab: Recording */}
+                  <Show when={activeTab() === "recording"}>
+                    <div class="form-group">
+                      <label>Modo de Gravação</label>
+                      <select value={camRecMode()} onChange={(e) => setCamRecMode(e.currentTarget.value)}>
+                        <option value="disabled">Desabilitado</option>
+                        <option value="continuous">Contínuo (24h)</option>
+                        <option value="motion">Detecção de Movimento</option>
+                        <option value="manual">Manual</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label>Diretório de Gravação</label>
+                      <input type="text" value={camRecDir()} onInput={(e) => setCamRecDir(e.currentTarget.value)} placeholder="C:\Gravacoes\Camera01" />
+                    </div>
+                    <div class="form-group">
+                      <label>Retenção (dias)</label>
+                      <input type="number" value={camRetention()} onInput={(e) => setCamRetention(e.currentTarget.value)} placeholder="30" min="1" max="365" />
+                    </div>
+                  </Show>
+
+                  {/* Tab: Location */}
+                  <Show when={activeTab() === "location"}>
+                    <div class="form-group">
+                      <label>Atalho no Cliente</label>
+                      <input type="text" value={camShortcut()} onInput={(e) => setCamShortcut(e.currentTarget.value)} placeholder="CAM-01" />
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                      <div class="form-group">
+                        <label>Latitude</label>
+                        <input type="number" step="0.000001" value={camLat()} onInput={(e) => setCamLat(e.currentTarget.value)} placeholder="-23.550520" />
+                      </div>
+                      <div class="form-group">
+                        <label>Longitude</label>
+                        <input type="number" step="0.000001" value={camLng()} onInput={(e) => setCamLng(e.currentTarget.value)} placeholder="-46.633308" />
+                      </div>
+                    </div>
+                  </Show>
+
+                  {/* Tab: Server */}
+                  <Show when={activeTab() === "server"}>
+                    <div class="form-group">
+                      <label>Vincular ao Servidor</label>
+                      <select value={camServerId()} onChange={(e) => setCamServerId(e.currentTarget.value)}>
+                        <option value="">Nenhum servidor</option>
+                        <For each={servers()}>
+                          {(s: any) => (
+                            <option value={s.id}>{s.name} ({s.ip}:{s.port})</option>
+                          )}
+                        </For>
+                      </select>
+                      <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">
+                        Vincule esta câmera a um servidor para habilitar streaming WebRTC.
+                      </p>
+                    </div>
+                  </Show>
+
+                  <div class="modal-footer" style="margin-top: 24px; display: flex; justify-content: space-between;">
+                    <button type="button" class="btn btn-secondary" onClick={() => { setShowCameraModal(false); resetForm(); }}>Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Criar Câmera</button>
+                  </div>
+                </form>
+              </div>
             </div>
           </div>
         </Show>
