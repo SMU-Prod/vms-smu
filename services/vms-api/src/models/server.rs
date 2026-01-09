@@ -14,7 +14,6 @@ pub struct Server {
     pub ip: String,
     pub port: u16,
     pub username: String,
-    #[serde(skip_serializing)]
     pub password: String,
     pub status: ServerStatus,
     pub enabled: bool,
