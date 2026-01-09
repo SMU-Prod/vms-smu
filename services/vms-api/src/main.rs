@@ -14,16 +14,19 @@ use tracing::info;
 mod db;
 mod models;
 mod routes;
+mod recording_manager;
 
 use db::camera_repository::CameraRepository;
 use db::user_repository::UserRepository;
 use db::server_repository::ServerRepository;
+use recording_manager::RecordingManager;
 
 #[derive(Clone)]
 pub struct AppState {
     pub camera_repo: Arc<CameraRepository>,
     pub user_repo: Arc<UserRepository>,
     pub server_repo: Arc<ServerRepository>,
+    pub recording_manager: Arc<RecordingManager>,
 }
 
 #[tokio::main]
@@ -61,6 +64,7 @@ async fn main() -> Result<()> {
         camera_repo: Arc::new(camera_repo),
         user_repo: Arc::new(user_repo),
         server_repo: Arc::new(server_repo),
+        recording_manager: Arc::new(RecordingManager::new()),
     };
 
     // Auth routes
@@ -96,10 +100,13 @@ async fn main() -> Result<()> {
                 .delete(routes::cameras_v2::delete_camera),
         )
         .route("/test", post(routes::cameras_v2::test_camera_connection))
+        .route("/:id/recording/start", post(routes::recordings::start_recording))
+        .route("/:id/recording/stop", post(routes::recordings::stop_recording))
+        .route("/:id/recording/status", get(routes::recordings::recording_status))
+        .route("/:id/recordings", get(routes::recordings::list_recordings))
         .with_state(state.clone());
 
     // Legacy routes (backward compatibility)
-    use routes::recordings::*;
     use routes::streams::*;
     use vms_common::camera::CameraInfo;
 
@@ -108,11 +115,6 @@ async fn main() -> Result<()> {
     let legacy_routes = Router::new()
         .route("/streams", post(start_stream))
         .route("/streams/:id", delete(stop_stream))
-        .route("/recordings/:camera_id", get(list_recordings))
-        .route(
-            "/recordings/:camera_id/:recording_id",
-            get(download_recording),
-        )
         .with_state(camera_store);
 
     // WebRTC routes
@@ -130,6 +132,7 @@ async fn main() -> Result<()> {
                 .put(routes::servers::update_server)
                 .delete(routes::servers::delete_server),
         )
+        .route("/:id/health", get(routes::servers::health_check_server))
         .with_state(state.clone());
 
     // API v1 routes
