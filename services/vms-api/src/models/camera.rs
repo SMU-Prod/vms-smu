@@ -289,6 +289,7 @@ impl Camera {
             
             recording_mode: req.recording_mode,
             recording_dir: req.recording_dir,
+            audio_enabled: req.audio_enabled,
             retention_days: req.retention_days,
             
             shortcut: req.shortcut,

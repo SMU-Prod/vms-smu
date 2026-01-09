@@ -51,6 +51,7 @@ impl CameraRepository {
                 -- Gravação
                 recording_mode TEXT NOT NULL DEFAULT 'disabled',
                 recording_dir TEXT,
+                audio_enabled BOOLEAN NOT NULL DEFAULT 0,
                 retention_days INTEGER NOT NULL DEFAULT 30,
                 
                 -- Localização
@@ -84,10 +85,10 @@ impl CameraRepository {
                 ip_address, rtsp_port, onvif_port, username, password, rtsp_url, onvif_url,
                 transport, use_ssl, timeout_ms,
                 resolution_width, resolution_height, framerate, codec,
-                recording_mode, recording_dir, retention_days,
+                recording_mode, recording_dir, audio_enabled, retention_days,
                 shortcut, latitude, longitude, server_id,
                 created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(camera.id.to_string())
@@ -113,6 +114,7 @@ impl CameraRepository {
         .bind(&camera.codec)
         .bind(camera.recording_mode.as_str())
         .bind(&camera.recording_dir)
+        .bind(camera.audio_enabled)
         .bind(camera.retention_days as i64)
         .bind(&camera.shortcut)
         .bind(camera.latitude)
@@ -174,7 +176,7 @@ impl CameraRepository {
                 ip_address = ?, rtsp_port = ?, onvif_port = ?, username = ?, password = ?,
                 rtsp_url = ?, onvif_url = ?, transport = ?, use_ssl = ?, timeout_ms = ?,
                 resolution_width = ?, resolution_height = ?, framerate = ?, codec = ?,
-                recording_mode = ?, recording_dir = ?, retention_days = ?,
+                recording_mode = ?, recording_dir = ?, audio_enabled = ?, retention_days = ?,
                 shortcut = ?, latitude = ?, longitude = ?, server_id = ?, updated_at = ?
             WHERE id = ?
             "#,
@@ -201,6 +203,7 @@ impl CameraRepository {
         .bind(&camera.codec)
         .bind(camera.recording_mode.as_str())
         .bind(&camera.recording_dir)
+        .bind(camera.audio_enabled)
         .bind(camera.retention_days as i64)
         .bind(&camera.shortcut)
         .bind(camera.latitude)
@@ -253,6 +256,7 @@ impl CameraRepository {
             
             recording_mode: RecordingMode::from_str(row.get("recording_mode")),
             recording_dir: row.get("recording_dir"),
+            audio_enabled: row.get("audio_enabled"),
             retention_days: row.get::<i64, _>("retention_days") as u32,
             
             shortcut: row.get("shortcut"),
