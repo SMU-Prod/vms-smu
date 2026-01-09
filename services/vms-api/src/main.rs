@@ -143,7 +143,7 @@ async fn main() -> Result<()> {
         .nest("/servers", server_routes)
         .nest("/webrtc", webrtc_routes)
         .merge(legacy_routes)
-        .route("/mjpeg/:camera_id", get(routes::mjpeg::mjpeg_stream))
+        // MJPEG removed - using GStreamer vms-player for preview
         .route("/filesystem/list", get(routes::filesystem::list_directory))
         .route("/filesystem/create", post(routes::filesystem::create_folder))
         .with_state(state.clone());

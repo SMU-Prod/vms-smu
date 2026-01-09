@@ -4,7 +4,7 @@ pub mod cameras;
 pub mod cameras_v2;
 pub mod streams;
 pub mod recordings;
-pub mod mjpeg;
+// pub mod mjpeg; // Removed - using GStreamer vms-player for preview
 pub mod auth;
 pub mod webrtc;
 pub mod servers;

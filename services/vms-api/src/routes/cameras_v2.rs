@@ -183,19 +183,12 @@ pub async fn test_camera_connection(
     
     match result {
         Ok(_) => {
-            // Connection successful - generate preview URL
-            let preview_url = format!(
-                "/api/v1/mjpeg/stream?url={}&username={}&password={}",
-                urlencoding::encode(&format!("rtsp://{}:{}/stream1", req.ip_address, req.rtsp_port)),
-                urlencoding::encode(&req.username),
-                urlencoding::encode(&req.password)
-            );
-            
+            // Connection successful - preview handled by Tauri vms-player
             (StatusCode::OK, Json(TestConnectionResponse {
                 success: true,
                 rtsp_url,
                 message: format!("Conexão bem-sucedida com {}:{}", req.ip_address, req.rtsp_port),
-                preview_url: Some(preview_url),
+                preview_url: None, // Preview via GStreamer vms-player
             })).into_response()
         }
         Err(e) => {
