@@ -1,4 +1,5 @@
 import { createSignal, For, Show } from "solid-js";
+import { invoke } from "@tauri-apps/api/core";
 
 // Types
 interface Server {
@@ -714,6 +715,29 @@ export function CamerasPageDigifort(props: Props) {
 
                                 {/* Botões */}
                                 <div style="display: flex; justify-content: flex-end; gap: 12px;">
+                                    <button
+                                        type="button"
+                                        class="btn btn-success"
+                                        style="background: #22c55e; margin-right: auto;"
+                                        onClick={async () => {
+                                            const rtspUrl = `rtsp://${formIp()}:${formPort() || 554}/stream1`;
+                                            try {
+                                                const result = await invoke('open_player', {
+                                                    rtspUrl: rtspUrl,
+                                                    username: formUser(),
+                                                    password: formPass(),
+                                                    width: 960,
+                                                    height: 540
+                                                });
+                                                console.log('Player started:', result);
+                                            } catch (e) {
+                                                console.error('Failed to start player:', e);
+                                                alert('Erro ao abrir player: ' + e);
+                                            }
+                                        }}
+                                    >
+                                        🎬 Visualizar
+                                    </button>
                                     <button type="button" class="btn btn-secondary" onClick={() => setShowCameraModal(false)}>Cancelar</button>
                                     <button type="submit" class="btn btn-primary">OK</button>
                                 </div>
