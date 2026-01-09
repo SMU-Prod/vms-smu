@@ -144,6 +144,8 @@ async fn main() -> Result<()> {
         .nest("/webrtc", webrtc_routes)
         .merge(legacy_routes)
         .route("/mjpeg/:camera_id", get(routes::mjpeg::mjpeg_stream))
+        .route("/filesystem/list", get(routes::filesystem::list_directory))
+        .route("/filesystem/create", post(routes::filesystem::create_folder))
         .with_state(state.clone());
 
     // CORS for clients

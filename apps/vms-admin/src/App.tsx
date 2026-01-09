@@ -615,6 +615,52 @@ function App() {
     // Vinculação
     const [camServerId, setCamServerId] = createSignal("");
 
+    // Folder Picker State
+    const [showFolderPicker, setShowFolderPicker] = createSignal(false);
+    const [folderPath, setFolderPath] = createSignal("C:\\");
+    const [folderEntries, setFolderEntries] = createSignal<{ name: string; path: string }[]>([]);
+    const [folderDrives, setFolderDrives] = createSignal<string[]>([]);
+    const [newFolderName, setNewFolderName] = createSignal("");
+
+    const loadDirectory = async (path: string) => {
+      try {
+        const res = await fetch(`${API_URL}/filesystem/list?path=${encodeURIComponent(path)}`, {
+          headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setFolderPath(data.current_path);
+          setFolderEntries(data.entries || []);
+          setFolderDrives(data.drives || []);
+        }
+      } catch (e) { console.error(e); }
+    };
+
+    const createFolder = async () => {
+      if (!newFolderName()) return;
+      try {
+        const res = await fetch(`${API_URL}/filesystem/create`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${localStorage.getItem("token")}`
+          },
+          body: JSON.stringify({ path: folderPath(), name: newFolderName() })
+        });
+        if (res.ok) {
+          setNewFolderName("");
+          loadDirectory(folderPath());
+        }
+      } catch (e) { console.error(e); }
+    };
+
+    const goParent = () => {
+      const parts = folderPath().split("\\").filter(Boolean);
+      if (parts.length > 1) {
+        loadDirectory(parts.slice(0, -1).join("\\") + "\\");
+      }
+    };
+
     const resetForm = () => {
       setCamName(""); setCamDesc(""); setCamManufacturer(""); setCamModel("");
       setCamFirmware(""); setCamIp(""); setCamRtspPort("554"); setCamOnvifPort("80");
@@ -923,8 +969,8 @@ function App() {
                   {/* Tab: Recording */}
                   <Show when={activeTab() === "recording"}>
                     <div class="form-group">
-                      <label>Modo de Gravação</label>
-                      <select value={camRecMode()} onChange={(e) => setCamRecMode(e.currentTarget.value)}>
+                      <label style="font-size: 14px; font-weight: 500;">Modo de Gravação</label>
+                      <select value={camRecMode()} onChange={(e) => setCamRecMode(e.currentTarget.value)} style="width: 100%; padding: 12px; font-size: 14px;">
                         <option value="disabled">Desabilitado</option>
                         <option value="continuous">Contínuo (24h)</option>
                         <option value="motion">Detecção de Movimento</option>
@@ -932,12 +978,27 @@ function App() {
                       </select>
                     </div>
                     <div class="form-group">
-                      <label>Diretório de Gravação</label>
-                      <input type="text" value={camRecDir()} onInput={(e) => setCamRecDir(e.currentTarget.value)} placeholder="C:\Gravacoes\Camera01" />
+                      <label style="font-size: 14px; font-weight: 500;">Diretório de Gravação</label>
+                      <div style="display: flex; gap: 8px;">
+                        <input
+                          type="text"
+                          value={camRecDir()}
+                          onInput={(e) => setCamRecDir(e.currentTarget.value)}
+                          style="flex: 1; padding: 12px; font-size: 14px;"
+                        />
+                        <button
+                          type="button"
+                          class="btn btn-secondary"
+                          style="padding: 12px 16px; font-size: 16px;"
+                          onClick={() => { loadDirectory(camRecDir() || "C:\\"); setShowFolderPicker(true); }}
+                        >
+                          📁
+                        </button>
+                      </div>
                     </div>
                     <div class="form-group">
-                      <label>Retenção (dias)</label>
-                      <input type="number" value={camRetention()} onInput={(e) => setCamRetention(e.currentTarget.value)} placeholder="30" min="1" max="365" />
+                      <label style="font-size: 14px; font-weight: 500;">Retenção (dias)</label>
+                      <input type="number" value={camRetention()} onInput={(e) => setCamRetention(e.currentTarget.value)} min="1" max="365" style="width: 100%; padding: 12px; font-size: 14px;" />
                     </div>
                   </Show>
 
@@ -986,6 +1047,94 @@ function App() {
             </div>
           </div>
         </Show >
+
+        {/* Folder Picker Modal */}
+        <Show when={showFolderPicker()}>
+          <div class="modal-overlay" onClick={() => setShowFolderPicker(false)}>
+            <div class="modal-content" onClick={(e) => e.stopPropagation()} style="max-width: 600px;">
+              <div class="modal-header">
+                <h2>📁 Selecionar Diretório</h2>
+                <button class="modal-close" onClick={() => setShowFolderPicker(false)}>×</button>
+              </div>
+
+              {/* Current Path */}
+              <div style="padding: 12px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 16px; font-family: monospace; font-size: 14px;">
+                {folderPath()}
+              </div>
+
+              {/* Drives */}
+              <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">
+                <For each={folderDrives()}>
+                  {(drive) => (
+                    <button
+                      class={`btn ${folderPath().startsWith(drive) ? "btn-primary" : "btn-secondary"}`}
+                      style="padding: 8px 16px;"
+                      onClick={() => loadDirectory(drive)}
+                    >
+                      💾 {drive}
+                    </button>
+                  )}
+                </For>
+              </div>
+
+              {/* Navigation Buttons */}
+              <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <button class="btn btn-secondary" onClick={goParent} style="padding: 10px 16px;">
+                  ⬆️ Voltar
+                </button>
+              </div>
+
+              {/* Folder List */}
+              <div style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px;">
+                <For each={folderEntries()}>
+                  {(entry) => (
+                    <div
+                      style="padding: 12px 16px; cursor: pointer; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px;"
+                      onClick={() => loadDirectory(entry.path)}
+                      onMouseOver={(e) => (e.currentTarget.style.background = 'var(--bg-secondary)')}
+                      onMouseOut={(e) => (e.currentTarget.style.background = '')}
+                    >
+                      📁 <span style="font-size: 14px;">{entry.name}</span>
+                    </div>
+                  )}
+                </For>
+                <Show when={folderEntries().length === 0}>
+                  <div style="padding: 24px; text-align: center; color: var(--text-muted);">
+                    Nenhuma pasta encontrada
+                  </div>
+                </Show>
+              </div>
+
+              {/* Create Folder */}
+              <div style="display: flex; gap: 8px; margin-top: 16px;">
+                <input
+                  type="text"
+                  value={newFolderName()}
+                  onInput={(e) => setNewFolderName(e.currentTarget.value)}
+                  placeholder="Nome da nova pasta"
+                  style="flex: 1; padding: 10px;"
+                />
+                <button class="btn btn-secondary" onClick={createFolder} style="padding: 10px 16px;">
+                  ➕ Criar Pasta
+                </button>
+              </div>
+
+              {/* Footer */}
+              <div class="modal-footer" style="margin-top: 20px; display: flex; justify-content: space-between;">
+                <button class="btn btn-secondary" onClick={() => setShowFolderPicker(false)}>Cancelar</button>
+                <button
+                  class="btn btn-primary"
+                  onClick={() => {
+                    setCamRecDir(folderPath());
+                    setShowFolderPicker(false);
+                  }}
+                >
+                  ✅ Selecionar Este Diretório
+                </button>
+              </div>
+            </div>
+          </div>
+        </Show>
       </>
     );
   }

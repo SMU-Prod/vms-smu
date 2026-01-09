@@ -8,6 +8,7 @@ pub mod mjpeg;
 pub mod auth;
 pub mod webrtc;
 pub mod servers;
+pub mod filesystem;
 // pub mod onvif; // Temporarily disabled
 
 use axum::{http::StatusCode, Json};
