@@ -582,16 +582,17 @@ function App() {
 
   // Main App Layout
   function MainLayout() {
-    const pages: Record<string, () => any> = {
-      dashboard: Dashboard,
-      cameras: CamerasPage,
-      users: UsersPage,
-      servers: ServersPage,
-    };
-
-    const PageComponent = () => {
-      const Component = pages[currentPage()];
-      return Component ? <Component /> : <Dashboard />;
+    const renderPage = () => {
+      switch (currentPage()) {
+        case "cameras":
+          return <CamerasPage />;
+        case "users":
+          return <UsersPage />;
+        case "servers":
+          return <ServersPage />;
+        default:
+          return <Dashboard />;
+      }
     };
 
     return (
@@ -673,7 +674,7 @@ function App() {
           </header>
 
           <div class="content">
-            <PageComponent />
+            {renderPage()}
           </div>
         </main>
       </div>
