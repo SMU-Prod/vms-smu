@@ -45,8 +45,8 @@ pub async fn mjpeg_stream(
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
             .ok_or(StatusCode::NOT_FOUND)?;
         
-        // Use substream for lower latency (stream2 instead stream1)
-        let rtsp_url = camera.rtsp_url.replace("/stream1", "/stream2");
+        // Use original camera RTSP URL (no stream replacement - cameras may not have /stream2)
+        let rtsp_url = camera.rtsp_url.clone();
         let encoded_password = urlencoding::encode(&camera.password);
         
         let full_rtsp_url = if rtsp_url.starts_with("rtsp://") {
@@ -55,7 +55,7 @@ pub async fn mjpeg_stream(
             rtsp_url.clone()
         };
         
-        info!("📹 Using low-latency substream: {}", rtsp_url.split('@').last().unwrap_or(&rtsp_url));
+        info!("📹 MJPEG stream for: {}", rtsp_url.split('@').last().unwrap_or(&rtsp_url));
         
         // Small buffer = low latency
         let (tx, rx) = broadcast::channel::<Bytes>(4);
