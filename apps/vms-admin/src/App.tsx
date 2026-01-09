@@ -1,4 +1,5 @@
 import { createSignal, createEffect, Show, For } from "solid-js";
+import { CamerasPageDigifort } from "./CamerasPageDigifort";
 import "./App.css";
 
 // Types
@@ -1442,7 +1443,7 @@ function App() {
     const renderPage = () => {
       switch (currentPage()) {
         case "cameras":
-          return <CamerasPage />;
+          return <CamerasPageDigifort servers={servers} cameras={cameras} API_URL={API_URL} onRefresh={() => { loadCameras(); loadServers(); }} />;
         case "users":
           return <UsersPage />;
         case "servers":
