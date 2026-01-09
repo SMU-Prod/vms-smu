@@ -490,6 +490,48 @@ function App() {
       setCamRecMode("disabled"); setCamRecDir(""); setCamRetention("30");
       setCamShortcut(""); setCamLat(""); setCamLng(""); setCamServerId("");
       setActiveTab("camera");
+      setConnectionStatus(null);
+      setPreviewUrl(null);
+    };
+
+    // Connection test state
+    const [connectionStatus, setConnectionStatus] = createSignal<{ success: boolean; message: string } | null>(null);
+    const [previewUrl, setPreviewUrl] = createSignal<string | null>(null);
+    const [testingConnection, setTestingConnection] = createSignal(false);
+
+    const testConnection = async () => {
+      if (!camIp() || !camUser() || !camPass()) {
+        setConnectionStatus({ success: false, message: "Preencha IP, Usuário e Senha primeiro" });
+        return;
+      }
+      setTestingConnection(true);
+      setConnectionStatus(null);
+      setPreviewUrl(null);
+      try {
+        const res = await fetch(`${API_URL}/cameras/test`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token()}`,
+          },
+          body: JSON.stringify({
+            ip_address: camIp(),
+            rtsp_port: parseInt(camRtspPort()) || 554,
+            username: camUser(),
+            password: camPass(),
+          }),
+        });
+        const data = await res.json();
+        setConnectionStatus({ success: data.success, message: data.message });
+        if (data.success && data.preview_url) {
+          // Build full preview URL using API base
+          setPreviewUrl(`http://localhost:9095${data.preview_url}`);
+        }
+      } catch (e: any) {
+        setConnectionStatus({ success: false, message: `Erro: ${e.message}` });
+      } finally {
+        setTestingConnection(false);
+      }
     };
 
     const handleCreate = (e: Event) => {
@@ -671,6 +713,41 @@ function App() {
                         <label>Timeout (ms)</label>
                         <input type="number" value={camTimeout()} onInput={(e) => setCamTimeout(e.currentTarget.value)} placeholder="30000" />
                       </div>
+                    </div>
+
+                    {/* Test Connection Button */}
+                    <div style="margin-top: 16px; padding: 16px; background: var(--bg-secondary); border-radius: 8px;">
+                      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                        <button
+                          type="button"
+                          class="btn btn-secondary"
+                          onClick={testConnection}
+                          disabled={testingConnection()}
+                          style="display: flex; align-items: center; gap: 8px;"
+                        >
+                          {testingConnection() ? "⏳ Testando..." : "🔌 Testar Conexão"}
+                        </button>
+                        <Show when={connectionStatus()}>
+                          <span style={`font-weight: 500; color: ${connectionStatus()?.success ? "#22c55e" : "#ef4444"}`}>
+                            {connectionStatus()?.success ? "✅" : "❌"} {connectionStatus()?.message}
+                          </span>
+                        </Show>
+                      </div>
+
+                      {/* Preview Area */}
+                      <Show when={previewUrl()}>
+                        <div style="margin-top: 12px;">
+                          <label style="font-size: 12px; color: var(--text-muted);">Preview da Câmera:</label>
+                          <div style="margin-top: 8px; background: #000; border-radius: 8px; overflow: hidden; aspect-ratio: 16/9; max-width: 400px;">
+                            <img
+                              src={previewUrl()!}
+                              alt="Camera Preview"
+                              style="width: 100%; height: 100%; object-fit: contain;"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                            />
+                          </div>
+                        </div>
+                      </Show>
                     </div>
                   </Show>
 

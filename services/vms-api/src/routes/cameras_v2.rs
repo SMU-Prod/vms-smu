@@ -143,3 +143,68 @@ pub async fn delete_camera(
             .into_response(),
     }
 }
+
+/// Request for testing camera connection
+#[derive(Debug, serde::Deserialize)]
+pub struct TestConnectionRequest {
+    pub ip_address: String,
+    pub rtsp_port: u16,
+    pub username: String,
+    pub password: String,
+}
+
+/// Response for connection test
+#[derive(Debug, serde::Serialize)]
+pub struct TestConnectionResponse {
+    pub success: bool,
+    pub rtsp_url: String,
+    pub message: String,
+    pub preview_url: Option<String>,
+}
+
+/// POST /api/v1/cameras/test - Test camera connection
+pub async fn test_camera_connection(
+    Json(req): Json<TestConnectionRequest>,
+) -> impl IntoResponse {
+    use std::net::TcpStream;
+    use std::time::Duration;
+    
+    let address = format!("{}:{}", req.ip_address, req.rtsp_port);
+    let rtsp_url = format!(
+        "rtsp://{}:{}@{}:{}/stream1",
+        req.username, req.password, req.ip_address, req.rtsp_port
+    );
+    
+    // Try to connect to the camera via TCP
+    let result = TcpStream::connect_timeout(
+        &address.parse().unwrap_or_else(|_| "0.0.0.0:0".parse().unwrap()),
+        Duration::from_secs(5),
+    );
+    
+    match result {
+        Ok(_) => {
+            // Connection successful - generate preview URL
+            let preview_url = format!(
+                "/api/v1/mjpeg/stream?url={}&username={}&password={}",
+                urlencoding::encode(&format!("rtsp://{}:{}/stream1", req.ip_address, req.rtsp_port)),
+                urlencoding::encode(&req.username),
+                urlencoding::encode(&req.password)
+            );
+            
+            (StatusCode::OK, Json(TestConnectionResponse {
+                success: true,
+                rtsp_url,
+                message: format!("Conexão bem-sucedida com {}:{}", req.ip_address, req.rtsp_port),
+                preview_url: Some(preview_url),
+            })).into_response()
+        }
+        Err(e) => {
+            (StatusCode::OK, Json(TestConnectionResponse {
+                success: false,
+                rtsp_url,
+                message: format!("Falha na conexão: {}", e),
+                preview_url: None,
+            })).into_response()
+        }
+    }
+}

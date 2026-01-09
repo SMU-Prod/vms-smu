@@ -95,6 +95,7 @@ async fn main() -> Result<()> {
                 .put(routes::cameras_v2::update_camera)
                 .delete(routes::cameras_v2::delete_camera),
         )
+        .route("/test", post(routes::cameras_v2::test_camera_connection))
         .with_state(state.clone());
 
     // Legacy routes (backward compatibility)
