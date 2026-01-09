@@ -103,6 +103,8 @@ function App() {
   const [users, setUsers] = createSignal<User[]>([]);
   const [servers, setServers] = createSignal<Server[]>([]);
   const [showServerModal, setShowServerModal] = createSignal(false);
+  const [showCameraModal, setShowCameraModal] = createSignal(false);
+  const [showUserModal, setShowUserModal] = createSignal(false);
 
   createEffect(() => {
     if (token()) {
@@ -215,6 +217,83 @@ function App() {
       }
     } catch (e) {
       console.error("Failed to delete server:", e);
+    }
+  }
+
+  // Camera CRUD
+  async function createCamera(data: { name: string; rtsp_url: string; username: string; password: string }) {
+    try {
+      const res = await fetch(`${API_URL}/cameras`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token()}`,
+        },
+        body: JSON.stringify({
+          ...data,
+          resolution_width: 1920,
+          resolution_height: 1080,
+          framerate: 30,
+          codec: "H264",
+          enabled: true,
+        }),
+      });
+      if (res.ok) {
+        loadCameras();
+        setShowCameraModal(false);
+      }
+    } catch (e) {
+      console.error("Failed to create camera:", e);
+    }
+  }
+
+  async function deleteCamera(id: string) {
+    if (!confirm("Tem certeza que deseja excluir esta câmera?")) return;
+    try {
+      const res = await fetch(`${API_URL}/cameras/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      if (res.ok) {
+        loadCameras();
+      }
+    } catch (e) {
+      console.error("Failed to delete camera:", e);
+    }
+  }
+
+  // User CRUD
+  async function createUser(data: { username: string; password: string; name: string; role: string }) {
+    try {
+      const res = await fetch(`${API_URL}/users`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token()}`,
+        },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        loadUsers();
+        setShowUserModal(false);
+      }
+    } catch (e) {
+      console.error("Failed to create user:", e);
+    }
+  }
+
+  async function deleteUser(id: string) {
+    if (!confirm("Tem certeza que deseja excluir este usuário?")) return;
+    try {
+      const res = await fetch(`${API_URL}/users/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      if (res.ok) {
+        loadUsers();
+      }
+    } catch (e) {
+      console.error("Failed to delete user:", e);
     }
   }
 
@@ -349,85 +428,212 @@ function App() {
 
   // Cameras Page
   function CamerasPage() {
+    const [camName, setCamName] = createSignal("");
+    const [camRtsp, setCamRtsp] = createSignal("");
+    const [camUser, setCamUser] = createSignal("");
+    const [camPass, setCamPass] = createSignal("");
+
+    const handleCreate = (e: Event) => {
+      e.preventDefault();
+      createCamera({
+        name: camName(),
+        rtsp_url: camRtsp(),
+        username: camUser(),
+        password: camPass(),
+      });
+      setCamName("");
+      setCamRtsp("");
+      setCamUser("");
+      setCamPass("");
+    };
+
     return (
-      <div class="card">
-        <div class="card-header">
-          <h3 class="card-title">Cameras</h3>
-          <button class="btn btn-primary">+ Add Camera</button>
+      <>
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Câmeras</h3>
+            <button class="btn btn-primary" onClick={() => setShowCameraModal(true)}>
+              + Adicionar Câmera
+            </button>
+          </div>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>RTSP URL</th>
+                <th>Resolução</th>
+                <th>Status</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              <For each={cameras()}>
+                {(camera) => (
+                  <tr>
+                    <td>{camera.name}</td>
+                    <td style="font-family: monospace; font-size: 12px">{camera.rtsp_url}</td>
+                    <td>{camera.resolution_width}x{camera.resolution_height}</td>
+                    <td>
+                      <span class={`status ${camera.enabled ? "status-online" : "status-offline"}`}>
+                        {camera.enabled ? "Online" : "Offline"}
+                      </span>
+                    </td>
+                    <td>
+                      <button class="btn btn-danger" style="padding: 6px 12px" onClick={() => deleteCamera(camera.id)}>
+                        🗑️
+                      </button>
+                    </td>
+                  </tr>
+                )}
+              </For>
+            </tbody>
+          </table>
         </div>
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>RTSP URL</th>
-              <th>Resolution</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <For each={cameras()}>
-              {(camera) => (
-                <tr>
-                  <td>{camera.name}</td>
-                  <td style="font-family: monospace; font-size: 12px">{camera.rtsp_url}</td>
-                  <td>{camera.resolution_width}x{camera.resolution_height}</td>
-                  <td>
-                    <span class={`status ${camera.enabled ? "status-online" : "status-offline"}`}>
-                      {camera.enabled ? "Online" : "Offline"}
-                    </span>
-                  </td>
-                  <td>
-                    <button class="btn btn-secondary" style="padding: 6px 12px">Edit</button>
-                  </td>
-                </tr>
-              )}
-            </For>
-          </tbody>
-        </table>
-      </div>
+
+        {/* Camera Modal */}
+        <Show when={showCameraModal()}>
+          <div class="modal-overlay" onClick={() => setShowCameraModal(false)}>
+            <div class="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div class="modal-header">
+                <h2>Nova Câmera</h2>
+                <button class="modal-close" onClick={() => setShowCameraModal(false)}>×</button>
+              </div>
+              <form onSubmit={handleCreate}>
+                <div class="form-group">
+                  <label>Nome</label>
+                  <input type="text" value={camName()} onInput={(e) => setCamName(e.currentTarget.value)} placeholder="Câmera Entrada" required />
+                </div>
+                <div class="form-group">
+                  <label>URL RTSP</label>
+                  <input type="text" value={camRtsp()} onInput={(e) => setCamRtsp(e.currentTarget.value)} placeholder="rtsp://192.168.1.100:554/stream" required />
+                </div>
+                <div class="form-group">
+                  <label>Usuário</label>
+                  <input type="text" value={camUser()} onInput={(e) => setCamUser(e.currentTarget.value)} placeholder="admin" required />
+                </div>
+                <div class="form-group">
+                  <label>Senha</label>
+                  <input type="password" value={camPass()} onInput={(e) => setCamPass(e.currentTarget.value)} placeholder="••••••" required />
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary" onClick={() => setShowCameraModal(false)}>Cancelar</button>
+                  <button type="submit" class="btn btn-primary">Criar Câmera</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </Show>
+      </>
     );
   }
 
   // Users Page
   function UsersPage() {
+    const [userName, setUserName] = createSignal("");
+    const [userUsername, setUserUsername] = createSignal("");
+    const [userPassword, setUserPassword] = createSignal("");
+    const [userRole, setUserRole] = createSignal("viewer");
+
+    const handleCreate = (e: Event) => {
+      e.preventDefault();
+      createUser({
+        name: userName(),
+        username: userUsername(),
+        password: userPassword(),
+        role: userRole(),
+      });
+      setUserName("");
+      setUserUsername("");
+      setUserPassword("");
+      setUserRole("viewer");
+    };
+
     return (
-      <div class="card">
-        <div class="card-header">
-          <h3 class="card-title">Users</h3>
-          <button class="btn btn-primary">+ Add User</button>
+      <>
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Usuários</h3>
+            <button class="btn btn-primary" onClick={() => setShowUserModal(true)}>
+              + Adicionar Usuário
+            </button>
+          </div>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Usuário</th>
+                <th>Nome</th>
+                <th>Perfil</th>
+                <th>Status</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              <For each={users()}>
+                {(u) => (
+                  <tr>
+                    <td>{u.username}</td>
+                    <td>{u.name}</td>
+                    <td style="text-transform: capitalize">{u.role}</td>
+                    <td>
+                      <span class={`status ${u.enabled ? "status-online" : "status-offline"}`}>
+                        {u.enabled ? "Ativo" : "Inativo"}
+                      </span>
+                    </td>
+                    <td>
+                      <button
+                        class="btn btn-danger"
+                        style="padding: 6px 12px"
+                        onClick={() => deleteUser(u.id)}
+                        disabled={u.username === "admin"}
+                      >
+                        🗑️
+                      </button>
+                    </td>
+                  </tr>
+                )}
+              </For>
+            </tbody>
+          </table>
         </div>
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Username</th>
-              <th>Name</th>
-              <th>Role</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <For each={users()}>
-              {(u) => (
-                <tr>
-                  <td>{u.username}</td>
-                  <td>{u.name}</td>
-                  <td style="text-transform: capitalize">{u.role}</td>
-                  <td>
-                    <span class={`status ${u.enabled ? "status-online" : "status-offline"}`}>
-                      {u.enabled ? "Active" : "Disabled"}
-                    </span>
-                  </td>
-                  <td>
-                    <button class="btn btn-secondary" style="padding: 6px 12px">Edit</button>
-                  </td>
-                </tr>
-              )}
-            </For>
-          </tbody>
-        </table>
-      </div>
+
+        {/* User Modal */}
+        <Show when={showUserModal()}>
+          <div class="modal-overlay" onClick={() => setShowUserModal(false)}>
+            <div class="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div class="modal-header">
+                <h2>Novo Usuário</h2>
+                <button class="modal-close" onClick={() => setShowUserModal(false)}>×</button>
+              </div>
+              <form onSubmit={handleCreate}>
+                <div class="form-group">
+                  <label>Nome Completo</label>
+                  <input type="text" value={userName()} onInput={(e) => setUserName(e.currentTarget.value)} placeholder="João Silva" required />
+                </div>
+                <div class="form-group">
+                  <label>Usuário (login)</label>
+                  <input type="text" value={userUsername()} onInput={(e) => setUserUsername(e.currentTarget.value)} placeholder="joao" required />
+                </div>
+                <div class="form-group">
+                  <label>Senha</label>
+                  <input type="password" value={userPassword()} onInput={(e) => setUserPassword(e.currentTarget.value)} placeholder="••••••" required />
+                </div>
+                <div class="form-group">
+                  <label>Perfil</label>
+                  <select value={userRole()} onChange={(e) => setUserRole(e.currentTarget.value)}>
+                    <option value="admin">Administrador</option>
+                    <option value="operator">Operador</option>
+                    <option value="viewer">Visualizador</option>
+                  </select>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary" onClick={() => setShowUserModal(false)}>Cancelar</button>
+                  <button type="submit" class="btn btn-primary">Criar Usuário</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </Show>
+      </>
     );
   }
 
