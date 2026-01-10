@@ -237,12 +237,10 @@ fn create_ultra_low_latency_pipeline(args: &Args) -> Result<gst::Pipeline> {
         .property("quality", 10i32)  // Highest quality resampling
         .build()?;
     
-    // Audio sink with buffer
+    // Audio sink - simple and stable
     let audio_sink = gst::ElementFactory::make("autoaudiosink")
         .name("audiosink")
         .property("sync", true)
-        .property("buffer-time", 100_000i64)  // 100ms output buffer
-        .property("latency-time", 20_000i64)  // 20ms latency
         .build()?;
 
     // Add video pipeline
